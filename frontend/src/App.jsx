@@ -1,5 +1,4 @@
 import { useEffect, useState } from "react";
-import React from "react";  
 import {
   Route,
   BrowserRouter as Router,
@@ -7,6 +6,8 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+import React from "react";
+
 import "./App.css";
 import Ask from "./components/Ask";
 import Feed from "./components/Feed";
@@ -15,11 +16,10 @@ import Profile from "./components/Profile";
 import Share from "./components/Share";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
-import SignupPage from "./pages/SignUpPage";
+import SignupPage from "./pages/SignupPage";
 
 // Dummy auth state for demonstration (replace with real auth logic)
 const useAuth = () => {
-  // In real app, use Firebase or context
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return !!localStorage.getItem("sciencehub_auth");
   });
@@ -33,14 +33,12 @@ function AppRoutes() {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Scroll effect for sticky header
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 50);
     window.addEventListener("scroll", handleScroll);
     return () => window.removeEventListener("scroll", handleScroll);
   }, []);
 
-  // Redirect to Feed after login/signup
   useEffect(() => {
     if (
       isAuthenticated &&
@@ -50,14 +48,12 @@ function AppRoutes() {
     }
   }, [isAuthenticated, location.pathname, navigate]);
 
-  // Show NavBar only on authenticated ("app") pages
   const showNavBar = ["/blog", "/tutorial", "/qna", "/profile"].some((p) =>
     location.pathname.startsWith(p)
   );
 
   return (
     <div className="science-hub-root">
-      {/* Hero/Header only on LandingPage */}
       {location.pathname === "/" && (
         <header className={`science-hub-hero ${scrolled ? "scrolled" : ""}`}>
           <div className="science-hub-hero-content">
@@ -78,7 +74,7 @@ function AppRoutes() {
         </header>
       )}
       {showNavBar && <NavBar section={section} setSection={setSection} />}
-      <main className="science-hub-main">
+      <main className="w-full max-w-5xl mx-auto px-2 py-8 min-h-[70vh]">
         <Routes>
           <Route path="/" element={<LandingPage />} />
           <Route
