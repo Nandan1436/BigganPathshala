@@ -1,0 +1,86 @@
+#root {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 3rem 2rem 4rem 2rem;
+  text-align: center;
+  background: linear-gradient(120deg, #f8faff 60%, #e0e7ef 100%);
+  border-radius: 2.5rem;
+  box-shadow: 0 12px 48px 0 rgba(75, 111, 255, 0.10), 0 1.5px 0 #fff8;
+  min-height: 90vh;
+  position: relative;
+  overflow: hidden;
+}
+
+.logo {
+  height: 5em;
+  padding: 1.5em;
+  will-change: filter;
+  transition: filter 300ms;
+}
+
+.logo:hover {
+  filter: drop-shadow(0 0 2em #646cffaa);
+}
+
+.logo.react:hover {
+  filter: drop-shadow(0 0 2em #61dafbaa);
+}
+
+@keyframes logo-spin {
+  from {
+    transform: rotate(0deg);
+  }
+
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  a:nth-of-type(2) .logo {
+    animation: logo-spin infinite 20s linear;
+  }
+}
+
+.card {
+  padding: 2.5em 2em;
+  border-radius: 1.5rem;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 8px 32px rgba(75, 111, 255, 0.10);
+  margin-bottom: 2rem;
+  transition: box-shadow 0.3s, transform 0.3s;
+}
+
+.card:hover {
+  box-shadow: 0 16px 48px rgba(75, 111, 255, 0.18);
+  transform: translateY(-4px) scale(1.02);
+}
+
+.read-the-docs {
+  color: #888;
+}
+
+.subject-card:hover {
+  transform: translateY(-8px) scale(1.05);
+  box-shadow: 0 12px 32px rgba(75, 111, 255, 0.13);
+}
+
+.topic-card:hover {
+  background: #e0e7ef;
+  transform: scale(1.03);
+}
+
+.active-nav {
+  box-shadow: 0 2px 8px #a1c4fd99;
+  outline: 2px solid #a1c4fd;
+}
+
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #a1c4fd;
+  border-radius: 4px;
+}
