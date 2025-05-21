@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { doc, setDoc } from "firebase/firestore";
+import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
 import React from "react";
-
 
 const CLOUDINARY_UPLOAD_PRESET = "healthTracker"; // Replace with your Cloudinary preset
 const CLOUDINARY_CLOUD_NAME = "ismailCloud"; // Replace with your Cloudinary cloud name
 
 export default function SignupPage() {
+  const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -22,8 +22,17 @@ export default function SignupPage() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  // const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
-  // const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+  // Validate username (3-15 chars, alphanumeric, no spaces)
+  const validateUsername = (username) => {
+    const regex = /^[a-zA-Z0-9]{3,15}$/;
+    return regex.test(username);
+  };
+
+  // Check if username is already taken
+  const checkUsernameAvailability = async (username) => {
+    const usernameDoc = await getDoc(doc(db, "usernames", username));
+    return !usernameDoc.exists();
+  };
 
   const handleImageChange = async (e) => {
     if (e.target.files[0]) {
@@ -60,17 +69,32 @@ export default function SignupPage() {
       setError("ছবি আপলোড হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন।");
       return;
     }
+
+    // Validate username
+    if (!validateUsername(username)) {
+      setError("ব্যবহারকারীর নাম ৩-১৫ অক্ষরের হতে হবে এবং শুধুমাত্র অক্ষর ও সংখ্যা থাকতে পারবে।");
+      return;
+    }
+
+    // Check username availability
+    const isUsernameAvailable = await checkUsernameAvailability(username);
+    if (!isUsernameAvailable) {
+      setError("এই ব্যবহারকারীর নাম ইতিমধ্যে ব্যবহৃত হয়েছে।");
+      return;
+    }
+
     try {
       // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
 
-      // Update Firebase Auth profile with username
-      await updateProfile(user, { displayName: username });
+      // Update Firebase Auth profile with full name
+      await updateProfile(user, { displayName: fullName });
 
       // Initialize user metrics and data in Firestore
       await setDoc(doc(db, "users", user.uid), {
-        username: username || "অজ্ঞাত ব্যবহারকারী",
+        fullName: fullName || "অজ্ঞাত ব্যবহারকারী",
+        username: username,
         email: user.email,
         profilePic: imageUrl || "",
         educationLevel: educationLevel || "",
@@ -82,6 +106,11 @@ export default function SignupPage() {
         reputationTitle: "নবীন সহায়ক",
         xpTitle: "প্রাথমিক শিক্ষার্থী",
         contributionTitle: "নতুন অবদানকারী",
+      });
+
+      // Reserve username in usernames collection
+      await setDoc(doc(db, "usernames", username), {
+        uid: user.uid,
       });
 
       navigate("/"); // Redirect to homepage or feed
@@ -109,7 +138,7 @@ export default function SignupPage() {
       <div className="max-w-xl w-full px-4">
         <form
           onSubmit={handleSignup}
-          className="bg-white p-8 rounded-xl shadow-lg border border-blue-100 backdrop-blur-sm bg-white/90"
+          className="bg-white p-8 rounded-xl shadow-lg border border-blue-100 backdrop-blur-sm"
         >
           <h2 className="text-3xl font-bold mb-6 text-center bg-gradient-to-r from-blue-500 to-green-400 bg-clip-text text-transparent">
             সাইন আপ
@@ -122,16 +151,32 @@ export default function SignupPage() {
           )}
 
           <div className="mb-5">
+            <label className="block text-blue-800 font-medium mb-2">পুরো নাম</label>
+            <input
+              type="text"
+              placeholder="আপনার পুরো নাম লিখুন"
+              className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              required
+              aria-label="পুরো নাম"
+            />
+          </div>
+
+          <div className="mb-5">
             <label className="block text-blue-800 font-medium mb-2">ব্যবহারকারীর নাম</label>
             <input
               type="text"
-              placeholder="আপনার ব্যবহারকারীর নাম লিখুন"
+              placeholder="একটি সংক্ষিপ্ত, অনন্য নাম লিখুন"
               className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
               aria-label="ব্যবহারকারীর নাম"
             />
+            <p className="text-sm text-blue-600 mt-1">
+              ৩-১৫ অক্ষর, শুধুমাত্র অক্ষর ও সংখ্যা, কোনো ফাঁকা স্থান নয়।
+            </p>
           </div>
 
           <div className="mb-5">
