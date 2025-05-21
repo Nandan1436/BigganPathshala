@@ -15,9 +15,6 @@ export default function SignupPage() {
   const [password, setPassword] = useState("");
   const [image, setImage] = useState(null);
   const [imageUrl, setImageUrl] = useState("");
-  const [educationLevel, setEducationLevel] = useState("");
-  const [occupation, setOccupation] = useState("");
-  const [institution, setInstitution] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -96,16 +93,16 @@ export default function SignupPage() {
         fullName: fullName || "অজ্ঞাত ব্যবহারকারী",
         username: username,
         email: user.email,
-        profilePic: imageUrl || "",
-        educationLevel: educationLevel || "",
-        occupation: occupation || "",
-        institution: institution || "",
+        profilePic: imageUrl || "👤",
         reputation: 0,
-        xp: 0,
+        reputationTitle: "Newbie",
         contribution: 0,
-        reputationTitle: "নবীন সহায়ক",
-        xpTitle: "প্রাথমিক শিক্ষার্থী",
-        contributionTitle: "নতুন অবদানকারী",
+        contributionTitle: "New Contributor",
+        xp: 0,
+        xpTitle: "Quiz Novice",
+        postCount: 0,
+        questionCount: 0,
+        commentCount: 0
       });
 
       // Reserve username in usernames collection
@@ -256,54 +253,6 @@ export default function SignupPage() {
                 <span>ছবি আপলোড হচ্ছে...</span>
               </div>
             )}
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
-            <div>
-              <label className="block text-blue-800 font-medium mb-2">শিক্ষার স্তর</label>
-              <select
-                className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all appearance-none bg-white"
-                value={educationLevel}
-                onChange={(e) => setEducationLevel(e.target.value)}
-                aria-label="শিক্ষার স্তর"
-              >
-                <option value="">নির্বাচন করুন</option>
-                <option value="মাধ্যমিক">মাধ্যমিক</option>
-                <option value="উচ্চ মাধ্যমিক">উচ্চ মাধ্যমিক</option>
-                <option value="স্নাতক">স্নাতক</option>
-                <option value="স্নাতকোত্তর">স্নাতকোত্তর</option>
-                <option value="অন্যান্য">অন্যান্য</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-blue-800 font-medium mb-2">পেশা</label>
-              <select
-                className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all appearance-none bg-white"
-                value={occupation}
-                onChange={(e) => setOccupation(e.target.value)}
-                aria-label="পেশা"
-              >
-                <option value="">নির্বাচন করুন</option>
-                <option value="শিক্ষার্থী">শিক্ষার্থী</option>
-                <option value="শিক্ষক">শিক্ষক</option>
-                <option value="বিজ্ঞানী">বিজ্ঞানী</option>
-                <option value="পেশাদার">পেশাদার</option>
-                <option value="অন্যান্য">অন্যান্য</option>
-              </select>
-            </div>
-          </div>
-
-          <div className="mb-6">
-            <label className="block text-blue-800 font-medium mb-2">প্রতিষ্ঠান</label>
-            <input
-              type="text"
-              placeholder="আপনার প্রতিষ্ঠানের নাম লিখুন"
-              className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all"
-              value={institution}
-              onChange={(e) => setInstitution(e.target.value)}
-              aria-label="প্রতিষ্ঠান"
-            />
           </div>
 
           <button
