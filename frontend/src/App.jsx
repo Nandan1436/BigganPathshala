@@ -12,7 +12,9 @@ import Ask from "./components/Ask";
 import Feed from "./components/Feed";
 import NavBar from "./components/NavBar";
 import Profile from "./components/Profile";
-import Share from "./components/Share";
+import TutorialDetail from "./components/TutorialDetail";
+import TutorialEditor from "./components/TutorialEditor";
+import TutorialList from "./components/TutorialList";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
@@ -91,7 +93,9 @@ function AppRoutes() {
             element={<SignupPage setAuth={setIsAuthenticated} />}
           />
           <Route path="/blog" element={<Feed />} />
-          <Route path="/tutorial" element={<Share />} />
+          <Route path="/tutorial" element={<TutorialList />} />
+          <Route path="/tutorial/new" element={<TutorialEditor />} />
+          <Route path="/tutorial/:id" element={<TutorialDetail />} />
           <Route path="/qna" element={<Ask />} />
           <Route path="/profile" element={<Profile />} />
         </Routes>
