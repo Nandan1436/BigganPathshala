@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import React from 'react';
+import ReactQuill from 'react-quill';
 import { db } from "../firebase/config"; // adjust path as needed
 import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
@@ -30,7 +31,7 @@ function PostInput() {
 
     const handleShareSubmit = async (e) => {
         e.preventDefault();
-    
+
         try {
             await addDoc(collection(db, "blog"), {
                 content,
@@ -43,8 +44,8 @@ function PostInput() {
                 summary: "",
                 comments: [] // Or keep this out and create a subcollection
             });
-            
-    
+
+
             setSubmitted(true);
             setTimeout(() => {
                 setSubmitted(false);
@@ -59,18 +60,18 @@ function PostInput() {
             alert("❌ পোস্ট সংরক্ষণ ব্যর্থ হয়েছে!");
         }
     };
-    
+
 
     return (
         <div className="status-post-input max-w-5xl mx-auto px-6 py-4 mt-4 z-10 relative">
             {/* Initial input bar */}
             {!showForm && (
-                <div className="flex items-center gap-4 bg-white/90 rounded-2xl shadow-lg p-3 border border-blue-200">
+                <div className="w-1/2 mx-auto flex items-center gap-4 bg-white/90 rounded-2xl shadow-lg p-3 border border-blue-200">
                     <input
                         placeholder="আপনার মনে কী? বিজ্ঞান সম্পর্কে কিছু শেয়ার করুন..."
                         onFocus={() => setShowForm(true)} // Trigger form
                         className="flex-1 h-[36px] rounded-lg border border-blue-200 py-1 px-3 text-base placeholder:text-blue-300 bg-white/70 focus:ring-2 focus:ring-blue-400 focus:outline-none cursor-pointer"
-                        readOnly // Prevent keyboard for initial box
+                        readOnly
                     />
                     <button
                         type="button"
@@ -95,12 +96,19 @@ function PostInput() {
                             </div>
                         ) : (
                             <form onSubmit={handleShareSubmit} className="flex flex-col gap-6">
-                                <textarea
+                                <ReactQuill
                                     value={content}
-                                    onChange={(e) => setContent(e.target.value)}
+                                    onChange={setContent}
+                                    modules={{
+                                        toolbar: [
+                                            ['bold', 'italic', 'underline'],
+                                            [{ 'list': 'bullet' }],
+                                            ['clean']
+                                        ]
+                                    }}
+                                    formats={['bold', 'italic', 'underline', 'list', 'bullet']}
                                     placeholder="আপনার বিজ্ঞান বিষয়ক কন্টেন্ট লিখুন..."
-                                    className="w-full min-h-[120px] rounded-lg border border-blue-200 p-4 text-lg font-semibold placeholder:text-blue-300 bg-white/70 focus:ring-2 focus:ring-blue-400 focus:outline-none"
-                                    required
+                                    className="bg-white/70 border border-blue-200 rounded-lg shadow focus:ring-2 focus:ring-blue-400"
                                 />
 
                                 <input
