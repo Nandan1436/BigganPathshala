@@ -18,6 +18,24 @@ export default function TutorialList() {
 
   return (
     <section className="w-full min-h-[80vh] px-2 py-8 bg-gradient-to-br from-blue-50 via-white to-green-50">
+      {/* Quiz rules explanation */}
+      <div className="max-w-3xl mx-auto mb-8 bg-white/80 border border-blue-100 rounded-xl shadow p-5">
+        <h3 className="text-xl font-bold text-blue-700 mb-2">কুইজ নিয়মাবলী</h3>
+        <ul className="list-disc pl-6 text-blue-900/90 text-base space-y-1">
+          <li>প্রতিটি টিউটোরিয়ালের কুইজ বাংলায় থাকবে।</li>
+          <li>মোট প্রশ্ন সংখ্যা ১০ থেকে ২৫টি (লেভেলভিত্তিক বিভাজন)।</li>
+          <li>
+            সহজ (Easy): ৪-১০টি প্রশ্ন, প্রতিটি সঠিক উত্তরে <b>১</b> নম্বর।
+          </li>
+          <li>
+            মাঝারি (Medium): ৩-৮টি প্রশ্ন, প্রতিটি সঠিক উত্তরে <b>২</b> নম্বর।
+          </li>
+          <li>
+            কঠিন (Hard): ৩-৭টি প্রশ্ন, প্রতিটি সঠিক উত্তরে <b>৩</b> নম্বর।
+          </li>
+          <li>কুইজে অংশগ্রহণ করে আপনি স্কোর ও স্বীকৃতি অর্জন করতে পারবেন।</li>
+        </ul>
+      </div>
       <div className="flex flex-col md:flex-row md:items-center md:justify-between mb-8 gap-4">
         <div>
           <h2 className="text-3xl font-extrabold bg-gradient-to-r from-blue-500 to-green-400 bg-clip-text text-transparent mb-1 drop-shadow-sm">

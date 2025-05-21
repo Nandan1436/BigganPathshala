@@ -1,8 +1,12 @@
 import { useState } from "react";
 import ReactQuill from "react-quill";
-import "react-quill/dist/quill.snow.css";
-import { createTutorial } from "../firebase/firestore";
 import React from "react";
+import "react-quill/dist/quill.snow.css";
+import {
+  createTutorial,
+  generateQuizzesWithGemini,
+  saveTutorialQuizzes,
+} from "../firebase/firestore";
 
 const CLOUDINARY_UPLOAD_PRESET = "healthTracker"; // Replace with your Cloudinary preset
 const CLOUDINARY_CLOUD_NAME = "ismailCloud"; // Replace with your Cloudinary cloud name
@@ -67,19 +71,38 @@ const TutorialEditor = () => {
     }
   };
 
+  // Gemini quiz generation
+  const handleGenerateQuiz = async () => {
+    setLoading(true);
+    try {
+      const quizzes = await generateQuizzesWithGemini(content);
+      setQuiz(quizzes);
+    } catch (err) {
+      alert("Quiz generation failed: " + err.message);
+    }
+    setLoading(false);
+  };
+
   // Firestore tutorial create
   const handleSubmit = async (e) => {
     e.preventDefault();
     setLoading(true);
     try {
-      await createTutorial({
+      let quizzes = quiz;
+      if (!quizzes) {
+        quizzes = await generateQuizzesWithGemini(content);
+        setQuiz(quizzes);
+      }
+      // Create the tutorial document (without quiz)
+      const tutorialId = await createTutorial({
         title,
         content,
         tags,
         image: imageUrl,
         createdAt: Date.now(),
-        quiz,
       });
+      // Store quizzes in subcollection
+      await saveTutorialQuizzes(tutorialId, quizzes);
       setSuccess(true);
       setTitle("");
       setContent("");
@@ -92,24 +115,6 @@ const TutorialEditor = () => {
       alert("Error: " + err.message);
     }
     setLoading(false);
-  };
-
-  // Mock quiz generation (replace with LLM API call)
-  const handleGenerateQuiz = async () => {
-    setLoading(true);
-    // Simulate API call
-    setTimeout(() => {
-      setQuiz({
-        questions: [
-          {
-            q: "এই টিউটোরিয়াল থেকে একটি প্রশ্ন উদাহরণ:",
-            options: ["উত্তর ১", "উত্তর ২", "উত্তর ৩", "উত্তর ৪"],
-            answer: 0,
-          },
-        ],
-      });
-      setLoading(false);
-    }, 1200);
   };
 
   return (
@@ -285,23 +290,74 @@ const TutorialEditor = () => {
           {quiz && (
             <div className="mt-4">
               <h5 className="font-bold text-lg mb-2">Quiz Preview</h5>
-              {quiz.questions.map((q, idx) => (
-                <div key={idx} className="mb-2">
-                  <div className="font-semibold">{q.q}</div>
-                  <ul className="list-disc pl-6">
-                    {q.options.map((opt, i) => (
-                      <li
-                        key={i}
-                        className={
-                          i === q.answer ? "font-bold text-green-600" : ""
-                        }
-                      >
-                        {opt}
-                      </li>
-                    ))}
-                  </ul>
+              {quiz.easy && (
+                <div className="mb-4">
+                  <div className="font-bold text-blue-700 mb-1">সহজ (Easy)</div>
+                  {quiz.easy.map((q, idx) => (
+                    <div key={idx} className="mb-2">
+                      <div className="font-semibold">{q.q}</div>
+                      <ul className="list-disc pl-6">
+                        {q.options.map((opt, i) => (
+                          <li
+                            key={i}
+                            className={
+                              i === q.answer ? "font-bold text-green-600" : ""
+                            }
+                          >
+                            {opt}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
                 </div>
-              ))}
+              )}
+              {quiz.medium && (
+                <div className="mb-4">
+                  <div className="font-bold text-yellow-700 mb-1">
+                    মাঝারি (Medium)
+                  </div>
+                  {quiz.medium.map((q, idx) => (
+                    <div key={idx} className="mb-2">
+                      <div className="font-semibold">{q.q}</div>
+                      <ul className="list-disc pl-6">
+                        {q.options.map((opt, i) => (
+                          <li
+                            key={i}
+                            className={
+                              i === q.answer ? "font-bold text-green-600" : ""
+                            }
+                          >
+                            {opt}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {quiz.hard && (
+                <div className="mb-4">
+                  <div className="font-bold text-red-700 mb-1">কঠিন (Hard)</div>
+                  {quiz.hard.map((q, idx) => (
+                    <div key={idx} className="mb-2">
+                      <div className="font-semibold">{q.q}</div>
+                      <ul className="list-disc pl-6">
+                        {q.options.map((opt, i) => (
+                          <li
+                            key={i}
+                            className={
+                              i === q.answer ? "font-bold text-green-600" : ""
+                            }
+                          >
+                            {opt}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
         </div>
