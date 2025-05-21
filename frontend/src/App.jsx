@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import React from "react";
 import {
   Route,
   BrowserRouter as Router,
@@ -6,8 +7,6 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import React from "react";
-
 import "./App.css";
 import Ask from "./components/Ask";
 import Feed from "./components/Feed";
@@ -17,8 +16,9 @@ import Share from "./components/Share";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
+import StatusPostInput from "./components/StatusPostInput";
+import PostInput from "./components/input";
 
-// Dummy auth state for demonstration (replace with real auth logic)
 const useAuth = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => {
     return !!localStorage.getItem("sciencehub_auth");
@@ -73,7 +73,12 @@ function AppRoutes() {
           </div>
         </header>
       )}
-      {showNavBar && <NavBar section={section} setSection={setSection} />}
+      {showNavBar && (
+        <>
+          <NavBar section={section} setSection={setSection} />
+          <PostInput/>
+        </>
+      )}
       <main className="w-full max-w-5xl mx-auto px-2 py-8 min-h-[70vh]">
         <Routes>
           <Route path="/" element={<LandingPage />} />
@@ -85,7 +90,6 @@ function AppRoutes() {
             path="/signup"
             element={<SignupPage setAuth={setIsAuthenticated} />}
           />
-          {/* Authenticated pages */}
           <Route path="/blog" element={<Feed />} />
           <Route path="/tutorial" element={<Share />} />
           <Route path="/qna" element={<Ask />} />
