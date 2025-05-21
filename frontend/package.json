@@ -13,13 +13,12 @@
     "@cloudinary/react": "^1.14.3",
     "@cloudinary/url-gen": "^1.21.0",
     "@tailwindcss/vite": "^4.1.7",
+    "dompurify": "^3.2.6",
     "dotenv": "^16.5.0",
     "firebase": "^11.8.0",
     "framer-motion": "^12.12.1",
-    "motion": "^12.12.1",
-
     "lucide-react": "^0.511.0",
-
+    "motion": "^12.12.1",
     "react": "^18.1.0",
     "react-dom": "^18.1.0",
     "react-icons": "^5.5.0",
