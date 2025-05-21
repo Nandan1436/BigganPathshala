@@ -1,54 +1,313 @@
 import { useState } from "react";
-import React from "react";
-import { createUserWithEmailAndPassword } from "firebase/auth";
 import { useNavigate } from "react-router-dom";
-import { auth } from "../firebase/config";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { doc, setDoc } from "firebase/firestore";
+import { auth, db } from "../firebase/config";
+import React from "react";
+
+
+const CLOUDINARY_UPLOAD_PRESET = "healthTracker"; // Replace with your Cloudinary preset
+const CLOUDINARY_CLOUD_NAME = "ismailCloud"; // Replace with your Cloudinary cloud name
 
 export default function SignupPage() {
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [image, setImage] = useState(null);
+  const [imageUrl, setImageUrl] = useState("");
+  const [educationLevel, setEducationLevel] = useState("");
+  const [occupation, setOccupation] = useState("");
+  const [institution, setInstitution] = useState("");
+  const [error, setError] = useState("");
+  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+
+  // const CLOUDINARY_CLOUD_NAME = import.meta.env.VITE_CLOUDINARY_CLOUD_NAME;
+  // const CLOUDINARY_UPLOAD_PRESET = import.meta.env.VITE_CLOUDINARY_UPLOAD_PRESET;
+
+  const handleImageChange = async (e) => {
+    if (e.target.files[0]) {
+      setImage(URL.createObjectURL(e.target.files[0]));
+      setLoading(true);
+      const data = new FormData();
+      data.append("file", e.target.files[0]);
+      data.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
+      try {
+        const res = await fetch(
+          `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
+          {
+            method: "POST",
+            body: data,
+          }
+        );
+        const file = await res.json();
+        if (file.error) {
+          throw new Error(file.error.message);
+        }
+        setImageUrl(file.secure_url);
+      } catch (err) {
+        setError("প্রোফাইল ছবি আপলোড করতে ব্যর্থ: " + err.message);
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
 
   const handleSignup = async (e) => {
     e.preventDefault();
+    setError("");
+    if (loading) {
+      setError("ছবি আপলোড হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন।");
+      return;
+    }
     try {
-      await createUserWithEmailAndPassword(auth, email, password);
-      navigate("/"); // redirect after signup
+      // Create user in Firebase Auth
+      const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+      const user = userCredential.user;
+
+      // Update Firebase Auth profile with username
+      await updateProfile(user, { displayName: username });
+
+      // Initialize user metrics and data in Firestore
+      await setDoc(doc(db, "users", user.uid), {
+        username: username || "অজ্ঞাত ব্যবহারকারী",
+        email: user.email,
+        profilePic: imageUrl || "",
+        educationLevel: educationLevel || "",
+        occupation: occupation || "",
+        institution: institution || "",
+        reputation: 0,
+        xp: 0,
+        contribution: 0,
+        reputationTitle: "নবীন সহায়ক",
+        xpTitle: "প্রাথমিক শিক্ষার্থী",
+        contributionTitle: "নতুন অবদানকারী",
+      });
+
+      navigate("/"); // Redirect to homepage or feed
     } catch (err) {
-      alert("Signup failed: " + err.message);
+      let errorMessage;
+      switch (err.code) {
+        case "auth/email-already-in-use":
+          errorMessage = "ইমেল ইতিমধ্যে ব্যবহৃত হয়েছে।";
+          break;
+        case "auth/invalid-email":
+          errorMessage = "অবৈধ ইমেল ঠিকানা।";
+          break;
+        case "auth/weak-password":
+          errorMessage = "পাসওয়ার্ড খুব দুর্বল। কমপক্ষে ৬ অক্ষর হতে হবে।";
+          break;
+        default:
+          errorMessage = "সাইন আপ ব্যর্থ: " + err.message;
+      }
+      setError(errorMessage);
     }
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-purple-50">
-      <form
-        onSubmit={handleSignup}
-        className="bg-white p-8 rounded-lg shadow-md w-96"
-      >
-        <h2 className="text-2xl font-bold mb-6 text-center">Sign Up</h2>
-        <input
-          type="email"
-          placeholder="Email"
-          className="w-full mb-4 p-3 border border-gray-300 rounded"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          required
-        />
-        <input
-          type="password"
-          placeholder="Password"
-          className="w-full mb-4 p-3 border border-gray-300 rounded"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          required
-        />
-        <button
-          type="submit"
-          className="w-full bg-purple-600 text-white py-3 rounded hover:bg-purple-700 transition"
+    <div className="min-h-screen flex items-center justify-center py-8">
+      <div className="max-w-xl w-full px-4">
+        <form
+          onSubmit={handleSignup}
+          className="bg-white p-8 rounded-xl shadow-lg border border-blue-100 backdrop-blur-sm bg-white/90"
         >
-          Sign Up
-        </button>
-      </form>
+          <h2 className="text-3xl font-bold mb-6 text-center bg-gradient-to-r from-blue-500 to-green-400 bg-clip-text text-transparent">
+            সাইন আপ
+          </h2>
+
+          {error && (
+            <div className="bg-red-50 border border-red-200 text-red-600 px-4 py-3 rounded-lg mb-6">
+              {error}
+            </div>
+          )}
+
+          <div className="mb-5">
+            <label className="block text-blue-800 font-medium mb-2">ব্যবহারকারীর নাম</label>
+            <input
+              type="text"
+              placeholder="আপনার ব্যবহারকারীর নাম লিখুন"
+              className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              required
+              aria-label="ব্যবহারকারীর নাম"
+            />
+          </div>
+
+          <div className="mb-5">
+            <label className="block text-blue-800 font-medium mb-2">ইমেল</label>
+            <input
+              type="email"
+              placeholder="ইমেল লিখুন"
+              className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              aria-label="ইমেল"
+            />
+          </div>
+
+          <div className="mb-5">
+            <label className="block text-blue-800 font-medium mb-2">পাসওয়ার্ড</label>
+            <input
+              type="password"
+              placeholder="পাসওয়ার্ড লিখুন"
+              className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              aria-label="পাসওয়ার্ড"
+            />
+          </div>
+
+          <div className="mb-5">
+            <label className="block text-blue-800 font-medium mb-2">প্রোফাইল ছবি</label>
+            <div className="flex items-center space-x-4">
+              <div className="flex-1">
+                <label className="w-full flex items-center justify-center p-3 border border-blue-200 rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100 transition-all">
+                  <span className="text-blue-700">{image ? "ছবি পরিবর্তন করুন" : "ছবি আপলোড করুন"}</span>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleImageChange}
+                    disabled={loading}
+                    aria-label="প্রোফাইল ছবি"
+                  />
+                </label>
+              </div>
+              {image && (
+                <div className="w-16 h-16 relative">
+                  <img
+                    src={image}
+                    alt="Profile Preview"
+                    className="w-16 h-16 rounded-full object-cover border-2 border-blue-300"
+                  />
+                </div>
+              )}
+            </div>
+            {loading && (
+              <div className="mt-2 text-blue-600 flex items-center">
+                <svg
+                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-600"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                <span>ছবি আপলোড হচ্ছে...</span>
+              </div>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-5">
+            <div>
+              <label className="block text-blue-800 font-medium mb-2">শিক্ষার স্তর</label>
+              <select
+                className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all appearance-none bg-white"
+                value={educationLevel}
+                onChange={(e) => setEducationLevel(e.target.value)}
+                aria-label="শিক্ষার স্তর"
+              >
+                <option value="">নির্বাচন করুন</option>
+                <option value="মাধ্যমিক">মাধ্যমিক</option>
+                <option value="উচ্চ মাধ্যমিক">উচ্চ মাধ্যমিক</option>
+                <option value="স্নাতক">স্নাতক</option>
+                <option value="স্নাতকোত্তর">স্নাতকোত্তর</option>
+                <option value="অন্যান্য">অন্যান্য</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-blue-800 font-medium mb-2">পেশা</label>
+              <select
+                className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all appearance-none bg-white"
+                value={occupation}
+                onChange={(e) => setOccupation(e.target.value)}
+                aria-label="পেশা"
+              >
+                <option value="">নির্বাচন করুন</option>
+                <option value="শিক্ষার্থী">শিক্ষার্থী</option>
+                <option value="শিক্ষক">শিক্ষক</option>
+                <option value="বিজ্ঞানী">বিজ্ঞানী</option>
+                <option value="পেশাদার">পেশাদার</option>
+                <option value="অন্যান্য">অন্যান্য</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="mb-6">
+            <label className="block text-blue-800 font-medium mb-2">প্রতিষ্ঠান</label>
+            <input
+              type="text"
+              placeholder="আপনার প্রতিষ্ঠানের নাম লিখুন"
+              className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all"
+              value={institution}
+              onChange={(e) => setInstitution(e.target.value)}
+              aria-label="প্রতিষ্ঠান"
+            />
+          </div>
+
+          <button
+            type="submit"
+            className="w-full bg-gradient-to-r from-blue-500 to-green-400 hover:from-green-400 hover:to-blue-500 text-white font-bold py-3 px-4 rounded-lg shadow transition-all flex items-center justify-center gap-2"
+            disabled={loading}
+          >
+            {loading ? (
+              <>
+                <svg
+                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                >
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                  ></circle>
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  ></path>
+                </svg>
+                অপেক্ষা করুন...
+              </>
+            ) : (
+              <span>সাইন আপ করুন</span>
+            )}
+          </button>
+
+          <div className="mt-6 text-center">
+            <p className="text-blue-800">
+              ইতিমধ্যে অ্যাকাউন্ট আছে?{" "}
+              <a
+                href="/login"
+                className="text-blue-500 hover:text-blue-700 font-semibold hover:underline transition-all"
+              >
+                লগইন করুন
+              </a>
+            </p>
+          </div>
+        </form>
+      </div>
     </div>
   );
 }
