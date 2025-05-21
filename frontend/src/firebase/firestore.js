@@ -1,8 +1,10 @@
 // Firestore setup and tutorial CRUD helpers
 import { initializeApp } from "firebase/app";
+
 import {
   addDoc,
   collection,
+  collectionGroup,
   deleteDoc,
   doc,
   getDoc,
@@ -10,10 +12,11 @@ import {
   getFirestore,
   orderBy,
   query,
+  setDoc,
   updateDoc,
   where,
 } from "firebase/firestore";
-import { firebaseConfig } from "./config";
+import { firebaseConfig, geminiModel } from "./config";
 
 const app = initializeApp(firebaseConfig);
 export const db = getFirestore(app);
@@ -51,4 +54,87 @@ export async function updateTutorial(id, data) {
 export async function deleteTutorial(id) {
   const docRef = doc(db, "tutorials", id);
   await deleteDoc(docRef);
+}
+
+// Store quizzes as subcollection under a tutorial
+export async function saveTutorialQuizzes(tutorialId, quizzes) {
+  // quizzes: { easy: [...], medium: [...], hard: [...] }
+  const quizLevels = Object.keys(quizzes);
+  for (const level of quizLevels) {
+    const quizDocRef = doc(db, "tutorials", tutorialId, "quizzes", level);
+    await setDoc(quizDocRef, { questions: quizzes[level] });
+  }
+}
+
+// Fetch quizzes for a tutorial (all levels)
+export async function getTutorialQuizzes(tutorialId) {
+  const quizColRef = collection(db, "tutorials", tutorialId, "quizzes");
+  const snap = await getDocs(quizColRef);
+  const quizzes = {};
+  snap.forEach((doc) => {
+    quizzes[doc.id] = doc.data().questions;
+  });
+  return quizzes;
+}
+
+/**
+ * Save a user's quiz result under a tutorial's quiz_result subcollection.
+ * @param {string} tutorialId - The Firestore document ID for the tutorial
+ * @param {object} result - { userId, score, answers, timestamp }
+ */
+export async function saveQuizResult(tutorialId, result) {
+  const quizResultRef = collection(db, "tutorials", tutorialId, "quiz_results");
+  await addDoc(quizResultRef, result);
+}
+
+/**
+ * Get all quiz results for a tutorial.
+ * @param {string} tutorialId
+ * @returns {Promise<Array>} Array of quiz result objects
+ */
+export async function getQuizResults(tutorialId) {
+  const quizResultRef = collection(db, "tutorials", tutorialId, "quiz_results");
+  const snap = await getDocs(quizResultRef);
+  return snap.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+}
+
+/**
+ * Get all quiz results for a user across all tutorials (for profile stats).
+ * @param {string} userId
+ * @returns {Promise<Array>} Array of { tutorialId, ...result }
+ */
+export async function getUserQuizResults(userId) {
+  // This requires a collectionGroup query
+  const q = query(
+    collectionGroup(db, "quiz_results"),
+    where("userId", "==", userId)
+  );
+  const snap = await getDocs(q);
+  return snap.docs.map((doc) => ({
+    id: doc.id,
+    tutorialId: doc.ref.parent.parent.id,
+    ...doc.data(),
+  }));
+}
+
+/**
+ * Generate quizzes (easy, medium, hard) for a tutorial using Gemini 2.0 Flash.
+ * Quizzes must be in Bangla, total 10-25 questions (distributed across levels), and include level-based scoring.
+ * @param {string} tutorialContent - The full content of the tutorial (HTML or text)
+ * @returns {Promise<{easy: any, medium: any, hard: any}>}
+ */
+export async function generateQuizzesWithGemini(tutorialContent) {
+  const prompt = `তুমি একজন অভিজ্ঞ বিজ্ঞান শিক্ষক ও কুইজ প্রস্তুতকারক। নিচের টিউটোরিয়ালটি পড়ে, বাংলায় ১০ থেকে ২৫টি মাল্টিপল চয়েস কুইজ তৈরি করো।\n\nলেভেলভিত্তিক কুইজ সংখ্যা ও নম্বরঃ\n- সহজ (easy): ৪-১০টি প্রশ্ন, প্রতিটি সঠিক উত্তরে ১ নম্বর\n- মাঝারি (medium): ৩-৮টি প্রশ্ন, প্রতিটি সঠিক উত্তরে ২ নম্বর\n- কঠিন (hard): ৩-৭টি প্রশ্ন, প্রতিটি সঠিক উত্তরে ৩ নম্বর\n\nপ্রতিটি প্রশ্নের জন্য ৩-৪টি অপশন দাও এবং সঠিক অপশন কোনটি তা নির্ধারণ করো (answer index)।\n\nফরম্যাট হবে strick JSON:\n{\n  "easy": [ { "q": "প্রশ্ন...", "options": ["..."], "answer": 0 }, ... ],\n  "medium": [ ... ],\n  "hard": [ ... ]\n}\n\nটিউটোরিয়াল কনটেন্ট:\n"""\n${tutorialContent}\n"""`;
+  const result = await geminiModel.generateContent(prompt);
+  const response = result.response;
+  try {
+    const text = response.text();
+    const match = text.match(/\{[\s\S]*\}/);
+    if (match) {
+      return JSON.parse(match[0]);
+    }
+    return null;
+  } catch {
+    return null;
+  }
 }
