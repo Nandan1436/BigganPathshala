@@ -1,10 +1,12 @@
-import { useState } from "react";
+import { useState , useEffect } from "react";
 import { colors } from "./styles";
 import NavBar from "./NavBar";
 import React from "react";
+import { getDocs , collection } from "firebase/firestore";
+import { db } from "../firebase/config";
 const Feed = () => {
   // Placeholder feed posts
-  const [posts] = useState([
+  const predefinedPosts = [
     {
       id: 1,
       user: "রাকিব আহমেদ",
@@ -65,120 +67,132 @@ const Feed = () => {
       language: "bn",
       featured: true,
     },
-  ]);
+  ];
+  const [posts,setPosts] = useState(predefinedPosts);
+
+  useEffect(() => {
+    const fetchBlogs = async () => {
+      try {
+        const querySnapshot = await getDocs(collection(db, "blog"));
+        const firebasePosts = querySnapshot.docs.map((doc) => {
+          const data = doc.data();
+  
+          return {
+            id: doc.id,
+            user: data.user || "অজ্ঞাত ব্যবহারকারী",
+            avatar: data.avatar || "👤",
+            tag: data.tag || "সাধারণ",
+            tagColor: data.tagColor || colors.primary,
+            content: data.content || "",
+            image: data.image || "",
+            factChecked: data.factChecked ?? false,
+            credibility: data.credibility ?? 0,
+            likes: data.likes ?? 0,
+            dislikes: data.dislikes ?? 0,
+            comments: data.comments ?? 0,
+            time: data.time || "এইমাত্র",
+            tags: data.tags || [],
+            featured: data.featured ?? false,
+          };
+        });
+  
+        // Merge with predefinedPosts, avoid duplicate IDs
+        setPosts((prev) => {
+          const allPosts = [...firebasePosts, ...prev];
+          const uniquePostsMap = new Map();
+  
+          allPosts.forEach((post) => {
+            uniquePostsMap.set(post.id, post);
+          });
+  
+          return Array.from(uniquePostsMap.values());
+        });
+      } catch (err) {
+        console.error("Error fetching blogs:", err);
+      }
+    };
+  
+    fetchBlogs();
+  }, []);
+  
+  
 
   return (
-    <section className="science-hub-feed">
+    <section className="max-w-4xl mx-auto p-4">
       {/* Feed header with filters */}
-      <div className="feed-header">
-        <h2>বিজ্ঞান ফিড</h2>
-        <div className="feed-filters">
-          <button className="active">সকল</button>
-          <button>জনপ্রিয়</button>
-          <button>নতুন</button>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-800">বিজ্ঞান ফিড</h2>
+        <div className="space-x-2">
+          <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">সকল</button>
+          <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">জনপ্রিয়</button>
+          <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">নতুন</button>
         </div>
       </div>
-
+  
       {posts.map((post) => (
         <article
           key={post.id}
-          className={`science-hub-blog-card ${
-            post.featured ? "featured-post" : ""
+          className={`bg-white rounded-2xl shadow-md p-6 mb-6 border ${
+            post.featured ? "border-yellow-400" : "border-gray-200"
           }`}
         >
           {post.factChecked && (
-            <div className="fact-checked-badge">
-              <span role="img" aria-label="Verified">
-                ✓
-              </span>{" "}
-              যাচাইকৃত
+            <div className="mb-2 text-sm font-semibold text-green-600 flex items-center gap-1">
+              <span>✓</span> যাচাইকৃত
             </div>
           )}
-
-          <div className="science-hub-blog-header">
-            <div className="science-hub-avatar">{post.avatar}</div>
-            <div className="user-info">
-              <div className="science-hub-user">{post.user}</div>
-              <div className="science-hub-time">{post.time}</div>
+  
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-4">
+              <div className="text-3xl">{post.avatar}</div>
+              <div>
+                <div className="font-semibold text-gray-800">{post.user}</div>
+                <div className="text-sm text-gray-500">{post.time}</div>
+              </div>
             </div>
             <span
-              className="science-hub-badge"
-              style={{ background: post.tagColor }}
+              className="text-sm font-semibold text-white px-3 py-1 rounded-full"
+              style={{ backgroundColor: post.tagColor }}
             >
               {post.tag}
             </span>
           </div>
-
-          <div className="science-hub-blog-content">
-            <p>{post.content}</p>
-            {post.image && (
-              <img
-                src={post.image}
-                alt="blog visual"
-                className="science-hub-blog-img"
-              />
-            )}
+  
+          <div className="text-gray-700 mb-4 whitespace-pre-line">
+            {post.content}
           </div>
-
-          <div className="science-hub-blog-tags">
+  
+          {post.image && (
+            <img
+              src={post.image}
+              alt="blog visual"
+              className="rounded-lg mb-4 w-full h-60 object-cover"
+            />
+          )}
+  
+          <div className="flex flex-wrap gap-2 mb-4">
             {post.tags.map((tag) => (
-              <span key={tag} className="science-hub-tag">
+              <span key={tag} className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm">
                 #{tag}
               </span>
             ))}
           </div>
-
-          <div className="science-hub-blog-actions">
-            <button title="সারসংক্ষেপ">
-              <span role="img" aria-label="Summarize">
-                📝
-              </span>{" "}
-              সারসংক্ষেপ
+  
+          <div className="flex flex-wrap gap-3 border-t pt-4 text-sm text-gray-600">
+            <button className="hover:text-blue-600">📝 সারসংক্ষেপ</button>
+            <button className="hover:text-blue-600">🌐 অনুবাদ</button>
+            <button className={`hover:text-green-600 ${post.likes > 0 ? "text-green-600 font-bold" : ""}`}>
+              👍 {post.likes}
             </button>
-            <button title="অনুবাদ">
-              <span role="img" aria-label="Translate">
-                🌐
-              </span>{" "}
-              অনুবাদ
-            </button>
-            <button title="পছন্দ" className={post.likes > 0 ? "liked" : ""}>
-              <span role="img" aria-label="Upvote">
-                👍
-              </span>{" "}
-              {post.likes}
-            </button>
-            <button title="অপছন্দ">
-              <span role="img" aria-label="Downvote">
-                👎
-              </span>{" "}
-              {post.dislikes}
-            </button>
-            <button title="মিথ্যা/গুজব চিহ্নিত">
-              <span role="img" aria-label="Flag">
-                🚩
-              </span>
-            </button>
-            <button title="মন্তব্য">
-              <span role="img" aria-label="Comments">
-                💬
-              </span>{" "}
-              {post.comments}
-            </button>
+            <button className="hover:text-red-500">👎 {post.dislikes}</button>
+            <button className="hover:text-yellow-600">🚩</button>
+            <button className="hover:text-purple-600">💬 {post.comments}</button>
           </div>
         </article>
       ))}
-
-      {/* Create Post Button */}
-      <div className="create-post-button">
-        <button>
-          <span role="img" aria-label="Create">
-            ✚
-          </span>{" "}
-          নতুন পোস্ট
-        </button>
-      </div>
     </section>
   );
+  
 };
 
 export default Feed;
