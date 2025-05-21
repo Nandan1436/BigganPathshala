@@ -17,74 +17,13 @@ import {
 import { db } from "../firebase/config";
 import { getAuth } from "firebase/auth";
 import { generateSummaryWithGemini } from "../firebase/firestore";
+import DOMPurify from "dompurify";
 
 const auth = getAuth();
 const user = auth.currentUser;
 
 const Feed = () => {
-  const predefinedPosts = [
-    {
-      id: 1,
-      user: "রাকিব আহমেদ",
-      avatar: "🧑🏽‍🔬",
-      tag: "ভৌতবিজ্ঞান",
-      tagColor: colors.primary,
-      content:
-        "আজকে আমি নিউটনের প্রথম সূত্র শিখেছি! কোনো বস্তু গতির অবস্থার পরিবর্তন হবে না যদি তার উপর কোনো বাহ্যিক বল প্রয়োগ না করা হয়।",
-      image:
-        "https://images.unsplash.com/photo-1635070041078-e363dbe005cb?auto=format&fit=crop&w=500&q=80",
-      factChecked: true,
-      credibility: 5,
-      likes: 12,
-      dislikes: 1,
-      comments: 3,
-      time: "10 মিনিট আগে",
-      tags: ["নিউটন", "বল", "মেকানিক্স"],
-      language: "bn",
-      featured: true,
-    },
-    {
-      id: 2,
-      user: "সাবিনা খাতুন",
-      avatar: "👩🏽‍🎓",
-      tag: "জীববিজ্ঞান",
-      tagColor: colors.accent1,
-      content:
-        "কোষ বিভাজন কিভাবে হয়, সেটা কেউ সহজভাবে বুঝিয়ে দিবে? আমি মাইটোসিস আর মিয়োসিস মধ্যে পার্থক্য বুঝতে পারছি না।",
-      image:
-        "https://images.unsplash.com/photo-1614935151651-0bea6508db6b?auto=format&fit=crop&w=500&q=80",
-      factChecked: false,
-      credibility: 2,
-      likes: 5,
-      dislikes: 0,
-      comments: 8,
-      time: "২ ঘণ্টা আগে",
-      tags: ["কোষ", "মাইটোসিস", "মিয়োসিস"],
-      language: "bn",
-      featured: false,
-    },
-    {
-      id: 3,
-      user: "তারেক হোসেন",
-      avatar: "🧑🏽‍🏫",
-      tag: "পরিবেশ বিজ্ঞান",
-      tagColor: colors.accent2,
-      content:
-        "বাংলাদেশে বনায়নের গুরুত্ব অপরিসীম। প্রতি বছর আমাদের যদি ১০% বেশি গাছ লাগাই, তবে ২ বছরে আমাদের পরিবেশের উন্নতি হবে।",
-      image:
-        "https://images.unsplash.com/photo-1513836279014-a89f7a76ae86?auto=format&fit=crop&w=500&q=80",
-      factChecked: true,
-      credibility: 4,
-      likes: 24,
-      dislikes: 2,
-      comments: 5,
-      time: "১ দিন আগে",
-      tags: ["বনায়ন", "পরিবেশ"],
-      language: "bn",
-      featured: true,
-    },
-  ];
-  const [posts, setPosts] = useState(predefinedPosts);
+  const [posts, setPosts] = useState([]);
   const [commentInputs, setCommentInputs] = useState({});
   const [commentsMap, setCommentsMap] = useState({});
 
@@ -114,7 +53,7 @@ const Feed = () => {
             time: data.time || "এইমাত্র",
             tags: data.tags || [],
             featured: data.featured ?? false,
-            summary: data.summary || null, // Include summary from Firestore
+            summary: data.summary || null,
           };
         });
 
@@ -223,29 +162,23 @@ const Feed = () => {
   };
 
   const handleSummarize = async (postId, content) => {
-    // If already loading, do nothing
     if (summaryLoading[postId]) return;
 
     setSummaryLoading((prev) => ({ ...prev, [postId]: true }));
     setSummaryError((prev) => ({ ...prev, [postId]: null }));
 
     try {
-      // Check if summary already exists in Firestore
       const postRef = doc(db, "blog", postId.toString());
       const postSnap = await getDoc(postRef);
       const existingSummary = postSnap.data()?.summary;
 
       if (existingSummary) {
-        // If summary exists, use it
         setSummaries((prev) => ({
           ...prev,
           [postId]: existingSummary,
         }));
       } else {
-        // Generate new summary and save to Firestore
         const summaryText = await generateSummaryWithGemini(content);
-
-        // Save summary to Firestore
         await updateDoc(postRef, {
           summary: summaryText || "সারাংশ পাওয়া যায়নি।",
         });
@@ -261,6 +194,15 @@ const Feed = () => {
     } finally {
       setSummaryLoading((prev) => ({ ...prev, [postId]: false }));
     }
+  };
+
+  // Function to sanitize and render HTML content
+  const renderContent = (content) => {
+    const sanitizedContent = DOMPurify.sanitize(content, {
+      ALLOWED_TAGS: ['p', 'b', 'i', 'u', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'br', 'div'],
+      ALLOWED_ATTR: ['href', 'target', 'class'],
+    });
+    return { __html: sanitizedContent };
   };
 
   return (
@@ -279,8 +221,7 @@ const Feed = () => {
         {posts.map((post) => (
           <article
             key={post.id}
-            className={`bg-white rounded-2xl shadow-md p-6 mb-6 border ${post.featured ? "border-yellow-400" : "border-gray-200"
-              }`}
+            className={`bg-white rounded-2xl shadow-md p-6 mb-6 border ${post.featured ? "border-yellow-400" : "border-gray-200"}`}
           >
             {post.factChecked && (
               <div className="mb-2 text-sm font-semibold text-green-600 flex items-center gap-1">
@@ -304,9 +245,11 @@ const Feed = () => {
               </span>
             </div>
 
-            <div className="text-gray-700 mb-4 whitespace-pre-line">{post.content}</div>
+            <div
+              className="text-gray-700 mb-4 whitespace-pre-line"
+              dangerouslySetInnerHTML={renderContent(post.content)}
+            />
 
-            {/* Show summary if exists, or error if applicable */}
             {summaries[post.id] && !summaryError[post.id] && (
               <div className="mb-4 p-4 bg-yellow-100 rounded-md text-gray-800">
                 <strong>সারাংশ: </strong>
@@ -352,7 +295,6 @@ const Feed = () => {
               >
                 👎 {post.dislikes}
               </button>
-              {/* Summarize button */}
               <button
                 onClick={() => handleSummarize(post.id, post.content)}
                 disabled={summaryLoading[post.id]}
@@ -362,11 +304,9 @@ const Feed = () => {
               </button>
             </div>
 
-            {/* comment section */}
             <div className="border-t border-[color:var(--primary)] pt-5">
               <h4 className="text-lg font-semibold mb-4 text-[color:var(--primary)]">মন্তব্যসমূহ</h4>
 
-              {/* Comments list */}
               <div className="max-h-40 overflow-y-auto mb-5 space-y-3 pr-1">
                 {(commentsMap[post.id] || []).length === 0 ? (
                   <p className="text-sm italic text-[color:var(--gray)]">কোনো মন্তব্য নেই। প্রথমে মন্তব্য করুন!</p>
@@ -390,7 +330,6 @@ const Feed = () => {
                 )}
               </div>
 
-              {/* Comment input and button */}
               <div className="flex flex-col md:flex-row items-center gap-3">
                 <input
                   type="text"
@@ -418,7 +357,6 @@ const Feed = () => {
                 </button>
               </div>
             </div>
-            {/* comment end */}
           </article>
         ))}
       </section>
