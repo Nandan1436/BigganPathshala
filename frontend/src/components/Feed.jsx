@@ -1,14 +1,24 @@
 import { useState, useEffect } from "react";
 import { colors } from "./styles";
 import React from "react";
-import { getDocs, collection, updateDoc, doc } from "firebase/firestore";
+import {
+  collection,
+  getDocs,
+  query,
+  orderBy,
+  onSnapshot,
+  addDoc,
+  serverTimestamp,
+  doc,
+  updateDoc,
+} from "firebase/firestore";
 import { db } from "../firebase/config";
 import { getAuth } from "firebase/auth";
+
 const auth = getAuth();
 const user = auth.currentUser;
 
 const Feed = () => {
-  // Placeholder feed posts
   const predefinedPosts = [
     {
       id: 1,
@@ -72,6 +82,8 @@ const Feed = () => {
     },
   ];
   const [posts, setPosts] = useState(predefinedPosts);
+  const [commentInputs, setCommentInputs] = useState({});
+  const [commentsMap, setCommentsMap] = useState({});
 
   useEffect(() => {
     const fetchBlogs = async () => {
@@ -138,7 +150,6 @@ const Feed = () => {
 
           localStorage.setItem("userPostActions", JSON.stringify(userActions));
 
-          // Only update Firestore if postId is a Firestore document id (string)
           if (typeof postId === "string") {
             updateDoc(doc(db, "blog", postId), {
               likes,
@@ -157,6 +168,43 @@ const Feed = () => {
         return post;
       });
     });
+  };
+
+  useEffect(() => {
+    const unsubscribes = posts.map((post) => {
+      const commentsRef = collection(db, "blog", post.id.toString(), "comments");
+      const q = query(commentsRef, orderBy("createdAt", "asc"));
+
+      const unsubscribe = onSnapshot(q, (querySnapshot) => {
+        const comments = querySnapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...doc.data(),
+        }));
+
+        setCommentsMap((prev) => ({
+          ...prev,
+          [post.id]: comments,
+        }));
+      });
+
+      return unsubscribe;
+    });
+
+    return () => unsubscribes.forEach((unsub) => unsub());
+  }, [posts]);
+
+  const handleCommentSubmit = async (postId) => {
+    const content = commentInputs[postId]?.trim();
+    if (!content) return;
+
+    await addDoc(collection(db, "blog", postId.toString(), "comments"), {
+      user: user?.displayName || "Anonymous",
+      uid: user?.uid || "unknown",
+      content,
+      createdAt: serverTimestamp(),
+    });
+
+    setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
   };
 
   return (
@@ -219,33 +267,79 @@ const Feed = () => {
             ))}
           </div>
 
-          <div className="flex flex-wrap gap-3 border-t pt-4 text-sm text-gray-600">
-            <button className="hover:text-blue-600 text-lg px-4 py-2 transition duration-150 transform hover:scale-110 rounded-full">
-              📝 সারসংক্ষেপ
-            </button>
-            <button className="hover:text-blue-600 text-lg px-4 py-2 transition duration-150 transform hover:scale-110 rounded-full">
-              🌐 অনুবাদ
-            </button>
+          <div className="flex gap-6 items-center mb-4">
             <button
-              className={`text-lg px-4 py-2 transition duration-150 transform hover:scale-110 rounded-full ${post.likes > 0 ? "text-green-600 font-bold" : "hover:text-green-600"
-                }`}
               onClick={() => handleReaction(post.id, "like")}
+              className={`flex items-center gap-1 ${post.likes > 0 ? "text-blue-600" : "text-gray-500"}`}
             >
               👍 {post.likes}
             </button>
             <button
-              className="hover:text-red-500 text-lg px-4 py-2 transition duration-150 transform hover:scale-110 rounded-full"
               onClick={() => handleReaction(post.id, "dislike")}
+              className={`flex items-center gap-1 ${post.dislikes > 0 ? "text-red-600" : "text-gray-500"}`}
             >
               👎 {post.dislikes}
             </button>
-            <button className="hover:text-yellow-600 text-lg px-4 py-2 transition duration-150 transform hover:scale-110 rounded-full">
-              🚩
-            </button>
-            <button className="hover:text-purple-600 text-lg px-4 py-2 transition duration-150 transform hover:scale-110 rounded-full">
-              💬 {post.comments}
-            </button>
+            <div className="flex items-center gap-1 text-gray-500">
+              💬 {commentsMap[post.id]?.length || 0} মন্তব্য
+            </div>
           </div>
+
+          {/* ======== COMMENTS SECTION (ADDED) ======== */}
+          <div className="border-t border-[color:var(--primary)] pt-5">
+            <h4 className="text-lg font-semibold mb-4 text-[color:var(--primary)]">মন্তব্যসমূহ</h4>
+
+            {/* Comments list */}
+            <div className="max-h-40 overflow-y-auto mb-5 space-y-3 pr-1">
+              {(commentsMap[post.id] || []).length === 0 ? (
+                <p className="text-sm italic text-[color:var(--gray)]">কোনো মন্তব্য নেই। প্রথমে মন্তব্য করুন!</p>
+              ) : (
+                (commentsMap[post.id] || []).map((comment) => (
+                  <div
+                    key={comment.id}
+                    className="bg-[color:var(--light)] rounded-lg p-4 shadow-sm"
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-semibold text-[color:var(--secondary)]">{comment.user}</span>
+                      <span className="text-xs text-[color:var(--gray)]">
+                        {comment.createdAt?.seconds
+                          ? new Date(comment.createdAt.seconds * 1000).toLocaleString("bn-BD")
+                          : ""}
+                      </span>
+                    </div>
+                    <p className="text-[color:var(--dark)]">{comment.content}</p>
+                  </div>
+                ))
+              )}
+            </div>
+
+            {/* Comment input and button */}
+            <div className="flex flex-col md:flex-row items-center gap-3">
+              <input
+                type="text"
+                placeholder="মন্তব্য লিখুন..."
+                className="w-full border border-[color:var(--gray)] bg-[color:var(--light)] text-[color:var(--dark)] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--primary)] transition"
+                value={commentInputs[post.id] || ""}
+                onChange={(e) =>
+                  setCommentInputs((prev) => ({
+                    ...prev,
+                    [post.id]: e.target.value,
+                  }))
+                }
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCommentSubmit(post.id);
+                }}
+              />
+              <button
+                className="bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold px-6 py-2 rounded-lg shadow hover:from-green-400 hover:to-blue-500 transition-all"
+                onClick={() => handleCommentSubmit(post.id)}
+              >
+                পাঠান
+              </button>
+            </div>
+          </div>
+          {/* ======== END COMMENTS SECTION ======== */}
+
         </article>
       ))}
     </section>
