@@ -52,6 +52,8 @@ function AppRoutes() {
     location.pathname.startsWith(p)
   );
 
+  //console.log("ENV:", import.meta.env);
+
   return (
     <div className="science-hub-root">
       {location.pathname === "/" && (
