@@ -1,42 +1,33 @@
 import { useState } from "react";
+import { db } from "../firebase/config";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
 
 export default function StatusPostInput() {
+
+  console.log("Component");
+  
   const [content, setContent] = useState("");
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!content.trim()) {
-      alert("Post content cannot be empty");
-      return;
+    console.log("Handle Submit ...")
+    try {
+      const docRef = await addDoc(collection(db, "blog"), {
+        content,
+        createdAt: serverTimestamp(),
+      });
+      alert(`✅ Post created! Document ID: ${docRef.id}`);
+      setContent("");
+    } catch (error) {
+      console.error(error);
+      alert("Failed to add document");
     }
-
-    const newPost = {
-      id: Date.now(),
-      user: "Current User",
-      avatar: "🧑🏽‍🔬",
-      tag: "ভৌতবিজ্ঞান",
-      tagColor: "#00A3FF",
-      content: content,
-      image: null,
-      factChecked: false,
-      credibility: 3,
-      likes: 0,
-      dislikes: 0,
-      comments: 0,
-      time: "এইমাত্র",
-      tags: [],
-      language: "bn",
-      featured: false,
-    };
-
-    const existingPosts = JSON.parse(localStorage.getItem("sciencehub_posts") || "[]");
-    localStorage.setItem("sciencehub_posts", JSON.stringify([newPost, ...existingPosts]));
-
-    setContent("");
   };
 
-  const isAuthenticated = !!localStorage.getItem("sciencehub_auth");
-  if (!isAuthenticated) return null;
+  // const isAuthenticated = !!localStorage.getItem("sciencehub_auth");
+  // if (!isAuthenticated) return null;
+
+  console.log(content);
 
   return (
     <div className="status-post-input max-w-5xl mx-auto px-6 py-4 mt-4">

@@ -1,5 +1,8 @@
 import { useState } from 'react';
 import React from 'react';
+import { db } from "../firebase/config"; // adjust path as needed
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+
 
 function PostInput() {
     const [showForm, setShowForm] = useState(false);
@@ -25,18 +28,38 @@ function PostInput() {
         setImage(URL.createObjectURL(e.target.files[0]));
     };
 
-    const handleShareSubmit = (e) => {
+    const handleShareSubmit = async (e) => {
         e.preventDefault();
-        setSubmitted(true);
-        setTimeout(() => {
-            setSubmitted(false);
-            setContent('');
-            setImage(null);
-            setTags([]);
-            setCategory('ভৌতবিজ্ঞান');
-            setShowForm(false);
-        }, 3000);
+    
+        try {
+            await addDoc(collection(db, "blog"), {
+                content,
+                image,
+                category,
+                tags,
+                createdAt: serverTimestamp(),
+                likes: 0,
+                dislikes: 0,
+                summary: "",
+                comments: [] // Or keep this out and create a subcollection
+            });
+            
+    
+            setSubmitted(true);
+            setTimeout(() => {
+                setSubmitted(false);
+                setContent('');
+                setImage(null);
+                setTags([]);
+                setCategory('ভৌতবিজ্ঞান');
+                setShowForm(false);
+            }, 3000);
+        } catch (error) {
+            console.error("Error adding document:", error);
+            alert("❌ পোস্ট সংরক্ষণ ব্যর্থ হয়েছে!");
+        }
     };
+    
 
     return (
         <div className="status-post-input max-w-5xl mx-auto px-6 py-4 mt-4 z-10 relative">
