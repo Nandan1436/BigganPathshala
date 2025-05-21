@@ -21,5 +21,4 @@ export const auth = getAuth(firebaseApp);
 export { model as geminiModel };
 
 const app = initializeApp(firebaseConfig);
-export const auth = getAuth(app);
 export const db = getFirestore(app);
