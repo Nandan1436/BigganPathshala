@@ -18,7 +18,7 @@ import TutorialList from "./components/TutorialList";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import SignupPage from "./pages/SignupPage";
-import StatusPostInput from "./components/StatusPostInput";
+
 import PostInput from "./components/input";
 
 const useAuth = () => {
@@ -80,7 +80,6 @@ function AppRoutes() {
       {showNavBar && (
         <>
           <NavBar section={section} setSection={setSection} />
-          <PostInput/>
         </>
       )}
       <main className="w-full max-w-5xl mx-auto px-2 py-8 min-h-[70vh]">

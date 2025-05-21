@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { colors } from "./styles";
+import PostInput from "./input";
 import React from "react";
 import {
   collection,
@@ -208,7 +209,9 @@ const Feed = () => {
   };
 
   return (
-    <section className="max-w-4xl mx-auto p-4">
+    <>
+     <PostInput/>
+     <section className="max-w-4xl mx-auto p-4">
       <div className="flex items-center justify-between mb-6">
         <h2 className="text-2xl font-bold text-gray-800">বিজ্ঞান ফিড</h2>
         <div className="space-x-2">
@@ -343,6 +346,8 @@ const Feed = () => {
         </article>
       ))}
     </section>
+    </>
+   
   );
 };
 
