@@ -138,3 +138,19 @@ export async function generateQuizzesWithGemini(tutorialContent) {
     return null;
   }
 }
+
+export async function generateSummaryWithGemini(content) {
+  const prompt = `তুমি একজন দক্ষ লেখক ও সংক্ষেপকারী। নিচের ব্লগ বা টিউটোরিয়াল কনটেন্ট পড়ে বাংলায় একটি সংক্ষিপ্ত, পরিষ্কার এবং তথ্যবহুল সারসংক্ষেপ তৈরি করো।\n\nফরম্যাট হবে সাধারণ টেক্সট।\n\nব্লগ/টিউটোরিয়াল কনটেন্ট:\n"""\n${content}\n"""`;
+
+  try {
+    const result = await geminiModel.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+
+    // Return trimmed summary text
+    return text.trim();
+  } catch (error) {
+    console.error("Error generating summary:", error);
+    return null;
+  }
+}

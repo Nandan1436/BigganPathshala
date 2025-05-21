@@ -15,6 +15,8 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { getAuth } from "firebase/auth";
+import { geminiModel } from "../firebase/config";
+import { generateSummaryWithGemini } from "../firebase/firestore";
 
 const auth = getAuth();
 const user = auth.currentUser;
@@ -85,6 +87,10 @@ const Feed = () => {
   const [posts, setPosts] = useState(predefinedPosts);
   const [commentInputs, setCommentInputs] = useState({});
   const [commentsMap, setCommentsMap] = useState({});
+
+  const [summaries, setSummaries] = useState({});
+  const [summaryLoading, setSummaryLoading] = useState({});
+  const [summaryError, setSummaryError] = useState({});
 
   useEffect(() => {
     const fetchBlogs = async () => {
@@ -208,146 +214,155 @@ const Feed = () => {
     setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
   };
 
+  const handleSummarize = async (postId, content) => {
+    // If already loading, do nothing
+    if (summaryLoading[postId]) return;
+
+    setSummaryLoading((prev) => ({ ...prev, [postId]: true }));
+    setSummaryError((prev) => ({ ...prev, [postId]: null }));
+
+    try {
+      const summaryText = await generateSummaryWithGemini(content);
+
+      setSummaries((prev) => ({
+        ...prev,
+        [postId]: summaryText || "সারাংশ পাওয়া যায়নি।",
+      }));
+    } catch (error) {
+      console.error("Error generating summary:", error);
+      setSummaryError((prev) => ({ ...prev, [postId]: "সারাংশ তৈরি করতে সমস্যা হয়েছে।" }));
+    } finally {
+      setSummaryLoading((prev) => ({ ...prev, [postId]: false }));
+    }
+  };
+
   return (
     <>
-     <PostInput/>
-     <section className="max-w-4xl mx-auto p-4">
-      <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-gray-800">বিজ্ঞান ফিড</h2>
-        <div className="space-x-2">
-          <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">সকল</button>
-          <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">জনপ্রিয়</button>
-          <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">নতুন</button>
+      <PostInput />
+      <section className="max-w-4xl mx-auto p-4">
+        <div className="flex items-center justify-between mb-6">
+          <h2 className="text-2xl font-bold text-gray-800">বিজ্ঞান ফিড</h2>
+          <div className="space-x-2">
+            <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">সকল</button>
+            <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">জনপ্রিয়</button>
+            <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">নতুন</button>
+          </div>
         </div>
-      </div>
 
-      {posts.map((post) => (
-        <article
-          key={post.id}
-          className={`bg-white rounded-2xl shadow-md p-6 mb-6 border ${post.featured ? "border-yellow-400" : "border-gray-200"
-            }`}
-        >
-          {post.factChecked && (
-            <div className="mb-2 text-sm font-semibold text-green-600 flex items-center gap-1">
-              <span>✓</span> যাচাইকৃত
-            </div>
-          )}
-
-          <div className="flex items-center justify-between mb-4">
-            <div className="flex items-center gap-4">
-              <div className="text-3xl">{post.avatar}</div>
-              <div>
-                <div className="font-semibold text-gray-800">{post.user}</div>
-                <div className="text-sm text-gray-500">{post.time}</div>
+        {posts.map((post) => (
+          <article
+            key={post.id}
+            className={`bg-white rounded-2xl shadow-md p-6 mb-6 border ${post.featured ? "border-yellow-400" : "border-gray-200"
+              }`}
+          >
+            {post.factChecked && (
+              <div className="mb-2 text-sm font-semibold text-green-600 flex items-center gap-1">
+                <span>✓</span> যাচাইকৃত
               </div>
-            </div>
-            <span
-              className="text-sm font-semibold text-white px-3 py-1 rounded-full"
-              style={{ backgroundColor: typeof post.tagColor === "string" ? post.tagColor : colors.primary }}
-            >
-              {post.tag}
-            </span>
-          </div>
+            )}
 
-          <div className="text-gray-700 mb-4 whitespace-pre-line">{post.content}</div>
-
-          {post.image && (
-            <img
-              src={post.image}
-              alt="blog visual"
-              className="rounded-lg mb-4 w-full h-60 object-cover"
-            />
-          )}
-
-          <div className="flex flex-wrap gap-2 mb-4">
-            {post.tags.map((tag) => (
+            <div className="flex items-center justify-between mb-4">
+              <div className="flex items-center gap-4">
+                <div className="text-3xl">{post.avatar}</div>
+                <div>
+                  <div className="font-semibold text-gray-800">{post.user}</div>
+                  <div className="text-sm text-gray-500">{post.time}</div>
+                </div>
+              </div>
               <span
-                key={tag}
-                className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm"
+                className="text-sm font-semibold text-white px-3 py-1 rounded-full"
+                style={{ backgroundColor: typeof post.tagColor === "string" ? post.tagColor : colors.primary }}
               >
-                #{tag}
+                {post.tag}
               </span>
-            ))}
-          </div>
-
-          <div className="flex gap-6 items-center mb-4">
-            <button
-              onClick={() => handleReaction(post.id, "like")}
-              className={`flex items-center gap-1 ${post.likes > 0 ? "text-blue-600" : "text-gray-500"}`}
-            >
-              👍 {post.likes}
-            </button>
-            <button
-              onClick={() => handleReaction(post.id, "dislike")}
-              className={`flex items-center gap-1 ${post.dislikes > 0 ? "text-red-600" : "text-gray-500"}`}
-            >
-              👎 {post.dislikes}
-            </button>
-            <div className="flex items-center gap-1 text-gray-500">
-              💬 {commentsMap[post.id]?.length || 0} মন্তব্য
-            </div>
-          </div>
-
-          {/* ======== COMMENTS SECTION (ADDED) ======== */}
-          <div className="border-t border-[color:var(--primary)] pt-5">
-            <h4 className="text-lg font-semibold mb-4 text-[color:var(--primary)]">মন্তব্যসমূহ</h4>
-
-            {/* Comments list */}
-            <div className="max-h-40 overflow-y-auto mb-5 space-y-3 pr-1">
-              {(commentsMap[post.id] || []).length === 0 ? (
-                <p className="text-sm italic text-[color:var(--gray)]">কোনো মন্তব্য নেই। প্রথমে মন্তব্য করুন!</p>
-              ) : (
-                (commentsMap[post.id] || []).map((comment) => (
-                  <div
-                    key={comment.id}
-                    className="bg-[color:var(--light)] rounded-lg p-4 shadow-sm"
-                  >
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="font-semibold text-[color:var(--secondary)]">{comment.user}</span>
-                      <span className="text-xs text-[color:var(--gray)]">
-                        {comment.createdAt?.seconds
-                          ? new Date(comment.createdAt.seconds * 1000).toLocaleString("bn-BD")
-                          : ""}
-                      </span>
-                    </div>
-                    <p className="text-[color:var(--dark)]">{comment.content}</p>
-                  </div>
-                ))
-              )}
             </div>
 
-            {/* Comment input and button */}
-            <div className="flex flex-col md:flex-row items-center gap-3">
+            <div className="text-gray-700 mb-4 whitespace-pre-line">{post.content}</div>
+
+            {/* Show summary if exists */}
+            {summaries[post.id] && (
+              <div className="mb-4 p-4 bg-yellow-100 rounded-md text-gray-800">
+                <strong>সারাংশ: </strong>
+                <p>{summaries[post.id]}</p>
+              </div>
+            )}
+
+            {post.image && (
+              <img
+                src={post.image}
+                alt="blog visual"
+                className="rounded-lg mb-4 w-full h-60 object-cover"
+              />
+            )}
+
+            <div className="flex flex-wrap gap-2 mb-4">
+              {post.tags.map((tag) => (
+                <span
+                  key={tag}
+                  className="bg-blue-100 text-blue-700 px-3 py-1 rounded-full text-sm"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+
+            <div className="flex gap-6 items-center mb-4">
+              <button
+                onClick={() => handleReaction(post.id, "like")}
+                className={`flex items-center gap-1 ${post.likes > 0 ? "text-blue-600" : "text-gray-500"}`}
+              >
+                👍 {post.likes}
+              </button>
+              <button
+                onClick={() => handleReaction(post.id, "dislike")}
+                className={`flex items-center gap-1 ${post.dislikes > 0 ? "text-red-600" : "text-gray-500"}`}
+              >
+                👎 {post.dislikes}
+              </button>
+              {/* Summarize button */}
+              <button
+                onClick={() => handleSummarize(post.id, post.content)}
+                disabled={summaryLoading[post.id]}
+                className="flex items-center gap-1 text-purple-700 hover:text-purple-900 disabled:opacity-50"
+              >
+                {summaryLoading[post.id] ? "সারাংশ তৈরি হচ্ছে..." : "সারাংশ"}
+              </button>
+            </div>
+
+            <div className="mb-4">
+              {commentsMap[post.id]?.map((comment) => (
+                <div key={comment.id} className="border border-gray-200 p-2 rounded mb-1">
+                  <strong>{comment.user}: </strong> {comment.content}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex gap-2">
               <input
-                type="text"
-                placeholder="মন্তব্য লিখুন..."
-                className="w-full border border-[color:var(--gray)] bg-[color:var(--light)] text-[color:var(--dark)] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--primary)] transition"
                 value={commentInputs[post.id] || ""}
                 onChange={(e) =>
-                  setCommentInputs((prev) => ({
-                    ...prev,
-                    [post.id]: e.target.value,
-                  }))
+                  setCommentInputs((prev) => ({ ...prev, [post.id]: e.target.value }))
                 }
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") handleCommentSubmit(post.id);
-                }}
+                type="text"
+                placeholder="মন্তব্য লিখুন..."
+                className="flex-grow border border-gray-300 rounded px-3 py-2"
               />
               <button
-                className="bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold px-6 py-2 rounded-lg shadow hover:from-green-400 hover:to-blue-500 transition-all"
                 onClick={() => handleCommentSubmit(post.id)}
+                className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
               >
                 পাঠান
               </button>
             </div>
-          </div>
-          {/* ======== END COMMENTS SECTION ======== */}
 
-        </article>
-      ))}
-    </section>
+            {/* Show summary error if any */}
+            {summaryError[post.id] && (
+              <p className="mt-2 text-red-600">{summaryError[post.id]}</p>
+            )}
+          </article>
+        ))}
+      </section>
     </>
-   
   );
 };
 
