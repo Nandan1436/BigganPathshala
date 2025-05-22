@@ -259,11 +259,11 @@ const Feed = () => {
       <section className="max-w-4xl mx-auto p-4">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800">বিজ্ঞান ফিড</h2>
-          <div className="space-x-2">
+          {/* <div className="space-x-2">
             <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">সকল</button>
             <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">জনপ্রিয়</button>
             <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">নতুন</button>
-          </div>
+          </div> */}
         </div>
 
         {posts.map((post) => (
