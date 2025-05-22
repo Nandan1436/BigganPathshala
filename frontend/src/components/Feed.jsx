@@ -19,6 +19,7 @@ import { generateSpeechScriptWithGemini } from "../firebase/firestore";
 import DOMPurify from "dompurify";
 import CommentComponent from "./CommentComponent";
 import SummaryComponent from "./SummaryComponent";
+import { formatBanglaTime } from "../utils/timeUtils";
 
 const auth = getAuth();
 
@@ -30,6 +31,7 @@ const Feed = () => {
   const [speechError, setSpeechError] = useState({});
   const [summaryLoading, setSummaryLoading] = useState({});
   const [currentUser, setCurrentUser] = useState(null);
+  const [, setTimeUpdate] = useState(0); // For forcing re-render
 
   // Listen for auth state changes
   useEffect(() => {
@@ -38,6 +40,14 @@ const Feed = () => {
       console.log("Auth state changed:", user ? user.uid : "No user");
     });
     return () => unsubscribe();
+  }, []);
+
+  // Periodic re-render for relative time updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeUpdate((prev) => prev + 1);
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
   }, []);
 
   // Listen for real-time updates to blog posts
@@ -61,7 +71,7 @@ const Feed = () => {
             likes: data.likes ?? 0,
             dislikes: data.dislikes ?? 0,
             comments: data.comments ?? 0,
-            time: data.time || "এইমাত্র",
+            createdAt: data.createdAt, // Use Firestore Timestamp
             tags: data.tags || [],
             featured: data.featured ?? false,
             summary: data.summary || null,
@@ -272,7 +282,7 @@ const Feed = () => {
                 <div className="text-3xl">{post.avatar}</div>
                 <div>
                   <div className="font-semibold text-gray-800">{post.user}</div>
-                  <div className="text-sm text-gray-500">{post.time}</div>
+                  <div className="text-sm text-gray-500">{formatBanglaTime(post.createdAt)}</div>
                 </div>
               </div>
               <span
