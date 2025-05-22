@@ -68,7 +68,7 @@ const NavBar = () => {
           aria-label="Science Hub Home"
         >
           <span className="text-3xl drop-shadow-md">🔬</span>
-          <span className="hidden sm:inline">Science Hub</span>
+          <span className="hidden sm:inline">বিজ্ঞান পাঠশালা</span>
         </Link>
 
         {/* Mobile menu toggle */}
