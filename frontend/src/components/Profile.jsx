@@ -23,7 +23,7 @@ const Profile = () => {
     contributionTitle: "New Contributor",
     learning: 0,
     learningTitle: "Learning Novice",
-    blogsCount: 0, // Still in state, but fetched from blogs collection
+    blogsCount: 0,
     tutorialsCount: 0,
     commentsCount: 0,
     bio: "",
@@ -100,33 +100,74 @@ const Profile = () => {
           userData = userDoc.data();
         }
 
-        // Fetch blogs count from blogs collection
+        // Fetch blogs count from blog collection
         const blogsQuery = query(
           collection(db, "blog"),
           where("uid", "==", user.uid)
         );
         const blogsSnapshot = await getDocs(blogsQuery);
-        const blogsCount = blogsSnapshot.size; // Count of matching documents
-      
+        const blogsCount = blogsSnapshot.size;
+        console.log(user)
+
+        // Fetch comments count and net votes from questions collection
+        let commentsCount = 0;
+        let netCommentVotes = 0;
+        const questionsQuery = collection(db, "questions");
+        const questionsSnapshot = await getDocs(questionsQuery);
+        for (const postDoc of questionsSnapshot.docs) {
+          const commentsQuery = query(
+            collection(db, "questions", postDoc.id, "comments"),
+            where("uid", "==", user.uid)
+          );
+          const commentsSnapshot = await getDocs(commentsQuery);
+          commentsCount += commentsSnapshot.size;
+          commentsSnapshot.forEach((commentDoc) => {
+            const commentData = commentDoc.data();
+            const likes = commentData.upvotes || 0;
+            const dislikes = commentData.downvotes || 0;
+            netCommentVotes += likes - dislikes;
+          });
+        }
+
+        // Calculate reputation and title
+        const reputation = Math.max(0, netCommentVotes); // Ensure non-negative
+        const reputationTitle = reputationThresholds.find(
+          (t) => reputation >= t.min && reputation <= t.max
+        )?.title || "Newbie";
+
+        // Update users/{uid} with commentsCount, reputation, and reputationTitle
+        const userRef = doc(db, "users", user.uid);
+        await updateDoc(userRef, {
+          commentsCount,
+          reputation,
+          reputationTitle
+        });
 
         // Set profile state
         setProfile({
           username: userData.username || "অজ্ঞাত ব্যবহারকারী",
           profilePic: userData.profilePic || "👤",
-          reputation: userData.reputation || 0,
-          reputationTitle: userData.reputationTitle || "Newbie",
+          reputation,
+          reputationTitle,
           contribution: userData.contribution || 0,
           contributionTitle: userData.contributionTitle || "New Contributor",
           learning: userData.learning || 0,
           learningTitle: userData.learningTitle || "Learning Novice",
-          blogsCount: blogsCount, // Set from blogs collection
+          blogsCount,
           tutorialsCount: userData.tutorialsCount || 0,
-          commentsCount: userData.commentsCount || 0,
+          commentsCount,
           bio: userData.bio || "এখনো কোনো বায়ো সেট করা হয়নি।",
           interests: userData.interests || []
         });
         setTempBio(userData.bio || "");
         setTempInterests(userData.interests || []);
+
+        // console.log("Profile fetched:", {
+        //   blogsCount,
+        //   commentsCount,
+        //   reputation,
+        //   reputationTitle
+        // });
       } catch (err) {
         console.error("Error fetching profile:", err);
       }
