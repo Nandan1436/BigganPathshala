@@ -5,39 +5,44 @@ import React from "react";
 import {
   collection,
   getDocs,
-  query,
-  orderBy,
-  onSnapshot,
-  addDoc,
-  serverTimestamp,
   doc,
   updateDoc,
   getDoc,
+  query,
+  orderBy,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
-import { getAuth } from "firebase/auth";
-import { generateSummaryWithGemini, generateSpeechScriptWithGemini } from "../firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { generateSpeechScriptWithGemini } from "../firebase/firestore";
 import DOMPurify from "dompurify";
+import CommentComponent from "./CommentComponent";
+import SummaryComponent from "./SummaryComponent";
 
 const auth = getAuth();
-const user = auth.currentUser;
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
-  const [commentInputs, setCommentInputs] = useState({});
-  const [commentsMap, setCommentsMap] = useState({});
-  const [summaries, setSummaries] = useState({});
-  const [summaryLoading, setSummaryLoading] = useState({});
-  const [summaryError, setSummaryError] = useState({});
-  const [speakingPost, setSpeakingPost] = useState(null); // Track which post is being read aloud
+  const [speakingPost, setSpeakingPost] = useState(null);
   const [speechScripts, setSpeechScripts] = useState({});
   const [speechLoading, setSpeechLoading] = useState({});
   const [speechError, setSpeechError] = useState({});
+  const [summaryLoading, setSummaryLoading] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Listen for auth state changes
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      console.log("Auth state changed:", user ? user.uid : "No user");
+    });
+    return () => unsubscribe();
+  }, []);
 
   useEffect(() => {
     const fetchBlogs = async () => {
       try {
-        const querySnapshot = await getDocs(collection(db, "blog"));
+        const postsQuery = query(collection(db, "blog"), orderBy("createdAt", "desc"));
+        const querySnapshot = await getDocs(postsQuery);
         const firebasePosts = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
@@ -68,13 +73,6 @@ const Feed = () => {
             uniquePostsMap.set(post.id, post);
           });
           return Array.from(uniquePostsMap.values());
-        });
-        setSummaries((prev) => {
-          const newSummaries = {};
-          firebasePosts.forEach((post) => {
-            if (post.summary) newSummaries[post.id] = post.summary;
-          });
-          return { ...prev, ...newSummaries };
         });
         setSpeechScripts((prev) => {
           const newScripts = {};
@@ -135,109 +133,36 @@ const Feed = () => {
     });
   };
 
-  useEffect(() => {
-    const unsubscribes = posts.map((post) => {
-      const commentsRef = collection(db, "blog", post.id.toString(), "comments");
-      const q = query(commentsRef, orderBy("createdAt", "asc"));
-
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const comments = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-
-        setCommentsMap((prev) => ({
-          ...prev,
-          [post.id]: comments,
-        }));
-      });
-
-      return unsubscribe;
-    });
-
-    return () => unsubscribes.forEach((unsub) => unsub());
-  }, [posts]);
-
-  const handleCommentSubmit = async (postId) => {
-    const content = commentInputs[postId]?.trim();
-    if (!content) return;
-
-    await addDoc(collection(db, "blog", postId.toString(), "comments"), {
-      user: user?.displayName || "Anonymous",
-      uid: user?.uid || "unknown",
-      content,
-      createdAt: serverTimestamp(),
-    });
-
-    setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
-  };
-
-  const handleSummarize = async (postId, content) => {
-    if (summaryLoading[postId]) return;
-
+  const triggerSummarize = (postId) => {
     setSummaryLoading((prev) => ({ ...prev, [postId]: true }));
-    setSummaryError((prev) => ({ ...prev, [postId]: null }));
-
-    try {
-      const postRef = doc(db, "blog", postId.toString());
-      const postSnap = await getDoc(postRef);
-      const existingSummary = postSnap.data()?.summary;
-
-      if (existingSummary) {
-        setSummaries((prev) => ({
-          ...prev,
-          [postId]: existingSummary,
-        }));
-      } else {
-        const summaryText = await generateSummaryWithGemini(content);
-        await updateDoc(postRef, {
-          summary: summaryText || "সারাংশ পাওয়া যায়নি।",
-        });
-
-        setSummaries((prev) => ({
-          ...prev,
-          [postId]: summaryText || "সারাংশ পাওয়া যায়নি।",
-        }));
-      }
-    } catch (error) {
-      console.error("Error handling summary:", error);
-      setSummaryError((prev) => ({ ...prev, [postId]: "সারাংশ তৈরি বা লোড করতে সমস্যা হয়েছে।" }));
-    } finally {
-      setSummaryLoading((prev) => ({ ...prev, [postId]: false }));
-    }
+    return () => setSummaryLoading((prev) => ({ ...prev, [postId]: false }));
   };
 
-  // Function to clean HTML content
   const cleanHTML = (content) => {
     const div = document.createElement("div");
     div.innerHTML = DOMPurify.sanitize(content);
     return div.textContent || div.innerText || "";
   };
 
-  // Function to handle text-to-speech with Gemini-generated script
   const handleGenerateAndSpeak = async (postId, content) => {
     const synth = window.speechSynthesis;
 
-    // If this post is already speaking, stop it
     if (speakingPost === postId) {
       synth.cancel();
       setSpeakingPost(null);
       return;
     }
 
-    // Stop any other speaking post
     if (synth.speaking) {
       synth.cancel();
     }
 
-    // Mark as loading
     setSpeechLoading((prev) => ({ ...prev, [postId]: true }));
     setSpeechError((prev) => ({ ...prev, [postId]: null }));
 
     try {
       let script = speechScripts[postId];
 
-      // If not already generated, fetch from Firestore or generate
       if (!script) {
         const postRef = doc(db, "blog", postId.toString());
         const postSnap = await getDoc(postRef);
@@ -247,7 +172,6 @@ const Feed = () => {
           script = existingScript;
           setSpeechScripts((prev) => ({ ...prev, [postId]: script }));
         } else {
-          // Clean HTML before generating script
           const cleanContent = cleanHTML(content);
           if (!cleanContent.trim()) {
             throw new Error("No readable content found");
@@ -258,7 +182,6 @@ const Feed = () => {
             throw new Error("Failed to generate speech script");
           }
 
-          // Save to Firestore
           await updateDoc(postRef, {
             speechScript: script,
           });
@@ -267,10 +190,9 @@ const Feed = () => {
         }
       }
 
-      // Speak the script
       const utterance = new SpeechSynthesisUtterance(script);
       utterance.lang = "bn-BD";
-      utterance.rate = 0.8; // Slower for clarity
+      utterance.rate = 0.8;
       utterance.onend = () => setSpeakingPost(null);
       utterance.onerror = (event) => {
         console.error("Speech synthesis error:", event);
@@ -289,7 +211,6 @@ const Feed = () => {
     }
   };
 
-  // Function to sanitize and render HTML content
   const renderContent = (content) => {
     const sanitizedContent = DOMPurify.sanitize(content, {
       ALLOWED_TAGS: ['p', 'b', 'i', 'u', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'br', 'div'],
@@ -343,18 +264,13 @@ const Feed = () => {
               dangerouslySetInnerHTML={renderContent(post.content)}
             />
 
-            {summaries[post.id] && !summaryError[post.id] && (
-              <div className="mb-4 p-4 bg-yellow-100 rounded-md text-gray-800">
-                <strong>সারাংশ: </strong>
-                <p>{summaries[post.id]}</p>
-              </div>
-            )}
-            {summaryError[post.id] && (
-              <div className="mb-4 p-4 bg-red-100 rounded-md text-gray-800">
-                <strong>ত্রুটি: </strong>
-                <p>{summaryError[post.id]}</p>
-              </div>
-            )}
+            <SummaryComponent
+              postId={post.id}
+              content={post.content}
+              initialSummary={post.summary}
+              onSummarize={() => triggerSummarize(post.id)}
+            />
+
             {speechError[post.id] && (
               <div className="mb-4 p-4 bg-red-100 rounded-md text-gray-800">
                 <strong>ত্রুটি: </strong>
@@ -395,13 +311,6 @@ const Feed = () => {
                 👎 {post.dislikes}
               </button>
               <button
-                onClick={() => handleSummarize(post.id, post.content)}
-                disabled={summaryLoading[post.id]}
-                className="flex items-center gap-1 text-purple-700 hover:text-purple-900 disabled:opacity-50"
-              >
-                {summaryLoading[post.id] ? "সারাংশ লোড হচ্ছে..." : "সারাংশ"}
-              </button>
-              <button
                 onClick={() => handleGenerateAndSpeak(post.id, post.content)}
                 className={`flex items-center gap-1 ${speakingPost === post.id ? "text-green-600" : "text-gray-700"} hover:text-green-800 transition`}
                 disabled={speechLoading[post.id]}
@@ -415,59 +324,7 @@ const Feed = () => {
               </button>
             </div>
 
-            <div className="border-t border-[color:var(--primary)] pt-5">
-              <h4 className="text-lg font-semibold mb-4 text-[color:var(--primary)]">মন্তব্যসমূহ</h4>
-
-              <div className="max-h-40 overflow-y-auto mb-5 space-y-3 pr-1">
-                {(commentsMap[post.id] || []).length === 0 ? (
-                  <p className="text-sm italic text-[color:var(--gray)]">কোনো মন্তব্য নেই। প্রথমে মন্তব্য করুন!</p>
-                ) : (
-                  (commentsMap[post.id] || []).map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="bg-[color:var(--light)] rounded-lg p-4 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold text-[color:var(--secondary)]">{comment.user}</span>
-                        <span className="text-xs text-[color:var(--gray)]">
-                          {comment.createdAt?.seconds
-                            ? new Date(comment.createdAt.seconds * 1000).toLocaleString("bn-BD")
-                            : ""}
-                        </span>
-                      </div>
-                      <p className="text-[color:var(--dark)]">{comment.content}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="flex flex-col md:flex-row items-center gap-3">
-                <input
-                  type="text"
-                  placeholder="মন্তব্য লিখুন..."
-                  className="w-full border border-[color:var(--gray)] bg-[color:var(--light)] text-[color:var(--dark)] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--primary)] transition"
-                  value={commentInputs[post.id] || ""}
-                  onChange={(e) =>
-                    setCommentInputs((prev) => ({
-                      ...prev,
-                      [post.id]: e.target.value,
-                    }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleCommentSubmit(post.id);
-                    }
-                  }}
-                />
-                <button
-                  className="bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold px-6 py-2 rounded-lg shadow hover:from-green-400 hover:to-blue-500 transition-all"
-                  onClick={() => handleCommentSubmit(post.id)}
-                >
-                  পাঠান
-                </button>
-              </div>
-            </div>
+            <CommentComponent postId={post.id} user={currentUser} />
           </article>
         ))}
       </section>
