@@ -1,5 +1,8 @@
-import { useState } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useState, useEffect } from "react";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { getAuth, onAuthStateChanged, signOut } from "firebase/auth";
+import { doc, getDoc } from "firebase/firestore";
+import { db } from "../firebase/config";
 import React from "react";
 
 const navItems = [
@@ -11,7 +14,48 @@ const navItems = [
 
 const NavBar = () => {
   const [menuOpen, setMenuOpen] = useState(false);
+  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [user, setUser] = useState(null);
+  const [userData, setUserData] = useState({ username: "", profilePic: "" });
   const location = useLocation();
+  const navigate = useNavigate();
+  const auth = getAuth();
+
+  // Track auth state and fetch user data
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        try {
+          const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+          if (userDoc.exists()) {
+            const data = userDoc.data();
+            setUserData({
+              username: data.username || "অজ্ঞাত ব্যবহারকারী",
+              profilePic: data.profilePic || "👤",
+            });
+          }
+        } catch (err) {
+          console.error("Error fetching user data:", err);
+        }
+      } else {
+        setUserData({ username: "", profilePic: "" });
+      }
+    });
+    return () => unsubscribe();
+  }, [auth]);
+
+  // Handle logout
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+      setMenuOpen(false);
+      setDropdownOpen(false);
+      navigate("/");
+    } catch (err) {
+      console.error("Error signing out:", err);
+    }
+  };
 
   return (
     <nav className="w-full bg-white/80 backdrop-blur-md shadow-md sticky top-0 z-50 border-b border-blue-100">
@@ -54,28 +98,75 @@ const NavBar = () => {
                   ? "bg-gradient-to-r from-blue-500 to-green-400 text-white shadow"
                   : "text-blue-900"
               }`}
-              aria-current={
-                location.pathname.startsWith(item.path) ? "page" : undefined
-              }
+              aria-current={location.pathname.startsWith(item.path) ? "page" : undefined}
             >
               <span className="text-lg">{item.icon}</span>
               <span>{item.label}</span>
             </Link>
           ))}
-          {/* Auth links */}
+
+          {/* User section */}
           <div className="flex items-center gap-2 ml-0 sm:ml-6 mt-4 sm:mt-0">
-            <Link
-              to="/login"
-              className="text-blue-500 font-semibold px-3 py-1 rounded-md hover:bg-blue-50 transition-colors"
-            >
-              লগইন
-            </Link>
-            <Link
-              to="/signup"
-              className="bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold px-4 py-1.5 rounded-md shadow hover:from-green-400 hover:to-blue-500 transition-all"
-            >
-              রেজিস্টার
-            </Link>
+            {user ? (
+              <div className="relative">
+                <button
+                  className="flex items-center gap-2 px-3 py-1 rounded-md text-blue-900 hover:bg-blue-50 transition-colors focus:outline-none"
+                  onClick={() => setDropdownOpen((open) => !open)}
+                  aria-label="User menu"
+                  aria-expanded={dropdownOpen}
+                >
+                  {userData.profilePic && userData.profilePic !== "👤" ? (
+                    <img
+                      src={userData.profilePic}
+                      alt="Profile"
+                      className="w-8 h-8 rounded-full object-cover border-2 border-blue-300"
+                    />
+                  ) : (
+                    <span className="text-2xl">👤</span>
+                  )}
+                  <span className="hidden sm:inline font-semibold">{userData.username}</span>
+                </button>
+                {dropdownOpen && (
+                  <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg border border-blue-100 py-2 z-50">
+                    <Link
+                      to="/profile"
+                      className="flex items-center gap-2 px-4 py-2 text-blue-900 hover:bg-blue-50 transition-colors"
+                      onClick={() => {
+                        setDropdownOpen(false);
+                        setMenuOpen(false);
+                      }}
+                    >
+                      <span className="text-lg">👤</span>
+                      প্রোফাইল
+                    </Link>
+                    <button
+                      onClick={handleLogout}
+                      className="flex items-center gap-2 px-4 py-2 text-blue-900 hover:bg-blue-50 transition-colors w-full text-left"
+                    >
+                      <span className="text-lg">🚪</span>
+                      লগআউট
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <>
+                <Link
+                  to="/login"
+                  className="text-blue-500 font-semibold px-3 py-1 rounded-md hover:bg-blue-50 transition-colors"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  লগইন
+                </Link>
+                <Link
+                  to="/signup"
+                  className="bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold px-4 py-1.5 rounded-md shadow hover:from-green-400 hover:to-blue-500 transition-all"
+                  onClick={() => setMenuOpen(false)}
+                >
+                  রেজিস্টার
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </div>
