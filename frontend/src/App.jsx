@@ -61,10 +61,9 @@ function AppRoutes() {
       {location.pathname === "/" && (
         <header className={`science-hub-hero ${scrolled ? "scrolled" : ""}`}>
           <div className="science-hub-hero-content">
-            <h1>Science Hub</h1>
+            <h1>বিজ্ঞান পাঠশালা</h1>
             <p className="science-hub-tagline">
-              Where curiosity meets community. Share, learn, and explore science
-              together!
+              প্রশ্ন করো, জানো, শিখাও — বিজ্ঞানের বন্ধনে একসাথে
             </p>
           </div>
           <div className="science-hub-hero-bg" />
