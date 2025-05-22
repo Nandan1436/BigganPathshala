@@ -5,18 +5,13 @@ import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
 import React from "react";
 
-const CLOUDINARY_UPLOAD_PRESET = "healthTracker"; // Replace with your Cloudinary preset
-const CLOUDINARY_CLOUD_NAME = "ismailCloud"; // Replace with your Cloudinary cloud name
-
 export default function SignupPage() {
   const [fullName, setFullName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [image, setImage] = useState(null);
-  const [imageUrl, setImageUrl] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
   // Validate username (3-15 chars, alphanumeric, no spaces)
@@ -31,41 +26,9 @@ export default function SignupPage() {
     return !usernameDoc.exists();
   };
 
-  const handleImageChange = async (e) => {
-    if (e.target.files[0]) {
-      setImage(URL.createObjectURL(e.target.files[0]));
-      setLoading(true);
-      const data = new FormData();
-      data.append("file", e.target.files[0]);
-      data.append("upload_preset", CLOUDINARY_UPLOAD_PRESET);
-      try {
-        const res = await fetch(
-          `https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD_NAME}/image/upload`,
-          {
-            method: "POST",
-            body: data,
-          }
-        );
-        const file = await res.json();
-        if (file.error) {
-          throw new Error(file.error.message);
-        }
-        setImageUrl(file.secure_url);
-      } catch (err) {
-        setError("প্রোফাইল ছবি আপলোড করতে ব্যর্থ: " + err.message);
-      } finally {
-        setLoading(false);
-      }
-    }
-  };
-
   const handleSignup = async (e) => {
     e.preventDefault();
     setError("");
-    if (loading) {
-      setError("ছবি আপলোড হচ্ছে, অনুগ্রহ করে অপেক্ষা করুন।");
-      return;
-    }
 
     // Validate username
     if (!validateUsername(username)) {
@@ -77,6 +40,12 @@ export default function SignupPage() {
     const isUsernameAvailable = await checkUsernameAvailability(username);
     if (!isUsernameAvailable) {
       setError("এই ব্যবহারকারীর নাম ইতিমধ্যে ব্যবহৃত হয়েছে।");
+      return;
+    }
+
+    // Validate password match
+    if (password !== confirmPassword) {
+      setError("পাসওয়ার্ড মেলেনি।");
       return;
     }
 
@@ -93,16 +62,16 @@ export default function SignupPage() {
         fullName: fullName || "অজ্ঞাত ব্যবহারকারী",
         username: username,
         email: user.email,
-        profilePic: imageUrl || "👤",
+        profilePic: "👤",
         reputation: 0,
         reputationTitle: "Newbie",
         contribution: 0,
         contributionTitle: "New Contributor",
-        xp: 0,
-        xpTitle: "Quiz Novice",
-        postCount: 0,
-        questionCount: 0,
-        commentCount: 0
+        learning: 0,
+        learningTitle: "Learning Novice",
+        blogsCount: 0,
+        tutorialsCount: 0,
+        commentsCount: 0
       });
 
       // Reserve username in usernames collection
@@ -203,90 +172,23 @@ export default function SignupPage() {
           </div>
 
           <div className="mb-5">
-            <label className="block text-blue-800 font-medium mb-2">প্রোফাইল ছবি</label>
-            <div className="flex items-center space-x-4">
-              <div className="flex-1">
-                <label className="w-full flex items-center justify-center p-3 border border-blue-200 rounded-lg cursor-pointer bg-blue-50 hover:bg-blue-100 transition-all">
-                  <span className="text-blue-700">{image ? "ছবি পরিবর্তন করুন" : "ছবি আপলোড করুন"}</span>
-                  <input
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleImageChange}
-                    disabled={loading}
-                    aria-label="প্রোফাইল ছবি"
-                  />
-                </label>
-              </div>
-              {image && (
-                <div className="w-16 h-16 relative">
-                  <img
-                    src={image}
-                    alt="Profile Preview"
-                    className="w-16 h-16 rounded-full object-cover border-2 border-blue-300"
-                  />
-                </div>
-              )}
-            </div>
-            {loading && (
-              <div className="mt-2 text-blue-600 flex items-center">
-                <svg
-                  className="animate-spin -ml-1 mr-2 h-4 w-4 text-blue-600"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                <span>ছবি আপলোড হচ্ছে...</span>
-              </div>
-            )}
+            <label className="block text-blue-800 font-medium mb-2">পাসওয়ার্ড নিশ্চিত করুন</label>
+            <input
+              type="password"
+              placeholder="পাসওয়ার্ড পুনরায় লিখুন"
+              className="w-full p-3 border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-300 focus:border-blue-500 transition-all"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              required
+              aria-label="পাসওয়ার্ড নিশ্চিত করুন"
+            />
           </div>
 
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-blue-500 to-green-400 hover:from-green-400 hover:to-blue-500 text-white font-bold py-3 px-4 rounded-lg shadow transition-all flex items-center justify-center gap-2"
-            disabled={loading}
+            className="w-full bg-gradient-to-r from-blue-500 to-green-400 hover:from-green-400 hover:to-blue-500 text-white font-bold py-3 px-4 rounded-lg shadow transition-all"
           >
-            {loading ? (
-              <>
-                <svg
-                  className="animate-spin -ml-1 mr-3 h-5 w-5 text-white"
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                >
-                  <circle
-                    className="opacity-25"
-                    cx="12"
-                    cy="12"
-                    r="10"
-                    stroke="currentColor"
-                    strokeWidth="4"
-                  ></circle>
-                  <path
-                    className="opacity-75"
-                    fill="currentColor"
-                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-                  ></path>
-                </svg>
-                অপেক্ষা করুন...
-              </>
-            ) : (
-              <span>সাইন আপ করুন</span>
-            )}
+            সাইন আপ করুন
           </button>
 
           <div className="mt-6 text-center">

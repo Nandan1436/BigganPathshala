@@ -4,37 +4,58 @@ import PostInput from "./input";
 import React from "react";
 import {
   collection,
-  getDocs,
-  query,
-  orderBy,
-  onSnapshot,
-  addDoc,
-  serverTimestamp,
   doc,
   updateDoc,
   getDoc,
+  query,
+  orderBy,
+  onSnapshot,
+  setDoc,
+  increment,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
-import { getAuth } from "firebase/auth";
-import { generateSummaryWithGemini } from "../firebase/firestore";
+import { getAuth, onAuthStateChanged } from "firebase/auth";
+import { generateSpeechScriptWithGemini } from "../firebase/firestore";
 import DOMPurify from "dompurify";
+import CommentComponent from "./CommentComponent";
+import SummaryComponent from "./SummaryComponent";
+import { formatBanglaTime } from "../utils/timeUtils";
 
 const auth = getAuth();
-const user = auth.currentUser;
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
-  const [commentInputs, setCommentInputs] = useState({});
-  const [commentsMap, setCommentsMap] = useState({});
-
-  const [summaries, setSummaries] = useState({});
+  const [speakingPost, setSpeakingPost] = useState(null);
+  const [speechScripts, setSpeechScripts] = useState({});
+  const [speechLoading, setSpeechLoading] = useState({});
+  const [speechError, setSpeechError] = useState({});
   const [summaryLoading, setSummaryLoading] = useState({});
-  const [summaryError, setSummaryError] = useState({});
+  const [currentUser, setCurrentUser] = useState(null);
+  const [, setTimeUpdate] = useState(0); // For forcing re-render
 
+  // Listen for auth state changes
   useEffect(() => {
-    const fetchBlogs = async () => {
-      try {
-        const querySnapshot = await getDocs(collection(db, "blog"));
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      setCurrentUser(user);
+      console.log("Auth state changed:", user ? user.uid : "No user");
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Periodic re-render for relative time updates
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setTimeUpdate((prev) => prev + 1);
+    }, 60000); // Update every minute
+    return () => clearInterval(interval);
+  }, []);
+
+  // Listen for real-time updates to blog posts
+  useEffect(() => {
+    const postsQuery = query(collection(db, "blog"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(
+      postsQuery,
+      (querySnapshot) => {
         const firebasePosts = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
@@ -50,157 +71,184 @@ const Feed = () => {
             likes: data.likes ?? 0,
             dislikes: data.dislikes ?? 0,
             comments: data.comments ?? 0,
-            time: data.time || "এইমাত্র",
+            createdAt: data.createdAt, // Use Firestore Timestamp
             tags: data.tags || [],
             featured: data.featured ?? false,
             summary: data.summary || null,
+            speechScript: data.speechScript || null,
           };
         });
 
-        setPosts((prev) => {
-          const allPosts = [...firebasePosts, ...prev];
-          const uniquePostsMap = new Map();
-          allPosts.forEach((post) => {
-            uniquePostsMap.set(post.id, post);
-          });
-          return Array.from(uniquePostsMap.values());
-        });
-        setSummaries((prev) => {
-          const newSummaries = {};
+        setPosts(firebasePosts);
+        setSpeechScripts((prev) => {
+          const newScripts = {};
           firebasePosts.forEach((post) => {
-            if (post.summary) newSummaries[post.id] = post.summary;
+            if (post.speechScript) newScripts[post.id] = post.speechScript;
           });
-          return { ...prev, ...newSummaries };
+          return { ...prev, ...newScripts };
         });
-      } catch (err) {
-        console.error("Error fetching blogs:", err);
+      },
+      (error) => {
+        console.error("Error listening to blogs:", error);
       }
-    };
-    fetchBlogs();
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const handleReaction = async (postId, type) => {
-    const userActions = JSON.parse(localStorage.getItem("userPostActions") || "{}");
-    const prevAction = userActions[postId];
+    if (!currentUser) {
+      console.log("User not logged in");
+      return;
+    }
 
-    setPosts((prevPosts) => {
-      return prevPosts.map((post) => {
-        if (post.id === postId) {
-          let likes = post.likes;
-          let dislikes = post.dislikes;
-
-          if (prevAction === type) {
-            if (type === "like") likes = Math.max(likes - 1, 0);
-            if (type === "dislike") dislikes = Math.max(dislikes - 1, 0);
-            delete userActions[postId];
-          } else {
-            if (prevAction === "like") likes = Math.max(likes - 1, 0);
-            if (prevAction === "dislike") dislikes = Math.max(dislikes - 1, 0);
-
-            if (type === "like") likes++;
-            if (type === "dislike") dislikes++;
-            userActions[postId] = type;
-          }
-
-          localStorage.setItem("userPostActions", JSON.stringify(userActions));
-
-          if (typeof postId === "string") {
-            updateDoc(doc(db, "blog", postId), {
-              likes,
-              dislikes,
-            }).catch((error) => {
-              console.error("Error updating reaction:", error);
-            });
-          }
-
-          return {
-            ...post,
-            likes,
-            dislikes,
-          };
-        }
-        return post;
-      });
-    });
-  };
-
-  useEffect(() => {
-    const unsubscribes = posts.map((post) => {
-      const commentsRef = collection(db, "blog", post.id.toString(), "comments");
-      const q = query(commentsRef, orderBy("createdAt", "asc"));
-
-      const unsubscribe = onSnapshot(q, (querySnapshot) => {
-        const comments = querySnapshot.docs.map((doc) => ({
-          id: doc.id,
-          ...doc.data(),
-        }));
-
-        setCommentsMap((prev) => ({
-          ...prev,
-          [post.id]: comments,
-        }));
-      });
-
-      return unsubscribe;
-    });
-
-    return () => unsubscribes.forEach((unsub) => unsub());
-  }, [posts]);
-
-  const handleCommentSubmit = async (postId) => {
-    const content = commentInputs[postId]?.trim();
-    if (!content) return;
-
-    await addDoc(collection(db, "blog", postId.toString(), "comments"), {
-      user: user?.displayName || "Anonymous",
-      uid: user?.uid || "unknown",
-      content,
-      createdAt: serverTimestamp(),
-    });
-
-    setCommentInputs((prev) => ({ ...prev, [postId]: "" }));
-  };
-
-  const handleSummarize = async (postId, content) => {
-    if (summaryLoading[postId]) return;
-
-    setSummaryLoading((prev) => ({ ...prev, [postId]: true }));
-    setSummaryError((prev) => ({ ...prev, [postId]: null }));
+    const reactionRef = doc(db, "blog", postId, "reactions", currentUser.uid);
+    const postRef = doc(db, "blog", postId);
 
     try {
-      const postRef = doc(db, "blog", postId.toString());
-      const postSnap = await getDoc(postRef);
-      const existingSummary = postSnap.data()?.summary;
+      // Check existing reaction
+      const reactionSnap = await getDoc(reactionRef);
+      const prevReaction = reactionSnap.exists() ? reactionSnap.data().type : null;
 
-      if (existingSummary) {
-        setSummaries((prev) => ({
-          ...prev,
-          [postId]: existingSummary,
-        }));
-      } else {
-        const summaryText = await generateSummaryWithGemini(content);
+      // Optimistically update UI
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.id === postId) {
+            let likes = post.likes;
+            let dislikes = post.dislikes;
+
+            if (prevReaction === type) {
+              // Undo reaction
+              if (type === "like") likes = Math.max(likes - 1, 0);
+              if (type === "dislike") dislikes = Math.max(dislikes - 1, 0);
+            } else {
+              // Remove previous reaction
+              if (prevReaction === "like") likes = Math.max(likes - 1, 0);
+              if (prevReaction === "dislike") dislikes = Math.max(dislikes - 1, 0);
+              // Add new reaction
+              if (type === "like") likes++;
+              if (type === "dislike") dislikes++;
+            }
+
+            return { ...post, likes, dislikes };
+          }
+          return post;
+        })
+      );
+
+      // Update Firestore
+      const postSnap = await getDoc(postRef); // Fetch post data for accurate counts
+      if (prevReaction === type) {
+        // Remove reaction
+        await setDoc(reactionRef, { type: null, uid: currentUser.uid, timestamp: new Date() }, { merge: true });
         await updateDoc(postRef, {
-          summary: summaryText || "সারাংশ পাওয়া যায়নি।",
+          likes: prevReaction === "like" ? increment(-1) : postSnap.data().likes,
+          dislikes: prevReaction === "dislike" ? increment(-1) : postSnap.data().dislikes,
         });
-
-        setSummaries((prev) => ({
-          ...prev,
-          [postId]: summaryText || "সারাংশ পাওয়া যায়নি।",
-        }));
+      } else {
+        // Add or update reaction (mutually exclusive)
+        await setDoc(reactionRef, { type, uid: currentUser.uid, timestamp: new Date() }, { merge: true });
+        await updateDoc(postRef, {
+          likes: type === "like" ? increment(1) : prevReaction === "like" ? increment(-1) : postSnap.data().likes,
+          dislikes: type === "dislike" ? increment(1) : prevReaction === "dislike" ? increment(-1) : postSnap.data().dislikes,
+        });
       }
     } catch (error) {
-      console.error("Error handling summary:", error);
-      setSummaryError((prev) => ({ ...prev, [postId]: "সারাংশ তৈরি বা লোড করতে সমস্যা হয়েছে।" }));
-    } finally {
-      setSummaryLoading((prev) => ({ ...prev, [postId]: false }));
+      console.error("Error handling reaction:", error);
+      // Revert UI on error
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.id === postId) {
+            return { ...post, likes: post.likes, dislikes: post.dislikes };
+          }
+          return post;
+        })
+      );
     }
   };
 
-  // Function to sanitize and render HTML content
+  const triggerSummarize = (postId) => {
+    setSummaryLoading((prev) => ({ ...prev, [postId]: true }));
+    return () => setSummaryLoading((prev) => ({ ...prev, [postId]: false }));
+  };
+
+  const cleanHTML = (content) => {
+    const div = document.createElement("div");
+    div.innerHTML = DOMPurify.sanitize(content);
+    return div.textContent || div.innerText || "";
+  };
+
+  const handleGenerateAndSpeak = async (postId, content) => {
+    const synth = window.speechSynthesis;
+
+    if (speakingPost === postId) {
+      synth.cancel();
+      setSpeakingPost(null);
+      return;
+    }
+
+    if (synth.speaking) {
+      synth.cancel();
+    }
+
+    setSpeechLoading((prev) => ({ ...prev, [postId]: true }));
+    setSpeechError((prev) => ({ ...prev, [postId]: null }));
+
+    try {
+      let script = speechScripts[postId];
+
+      if (!script) {
+        const postRef = doc(db, "blog", postId.toString());
+        const postSnap = await getDoc(postRef);
+        const existingScript = postSnap.data()?.speechScript;
+
+        if (existingScript) {
+          script = existingScript;
+          setSpeechScripts((prev) => ({ ...prev, [postId]: script }));
+        } else {
+          const cleanContent = cleanHTML(content);
+          if (!cleanContent.trim()) {
+            throw new Error("No readable content found");
+          }
+
+          script = await generateSpeechScriptWithGemini(cleanContent);
+          if (!script) {
+            throw new Error("Failed to generate speech script");
+          }
+
+          await updateDoc(postRef, {
+            speechScript: script,
+          });
+
+          setSpeechScripts((prev) => ({ ...prev, [postId]: script }));
+        }
+      }
+
+      const utterance = new SpeechSynthesisUtterance(script);
+      utterance.lang = "bn-BD";
+      utterance.rate = 0.8;
+      utterance.onend = () => setSpeakingPost(null);
+      utterance.onerror = (event) => {
+        console.error("Speech synthesis error:", event);
+        setSpeechError((prev) => ({ ...prev, [postId]: "টেক্সট পড়তে সমস্যা হয়েছে।" }));
+        setSpeakingPost(null);
+      };
+
+      synth.speak(utterance);
+      setSpeakingPost(postId);
+    } catch (error) {
+      console.error("Speech script error:", error);
+      setSpeechError((prev) => ({ ...prev, [postId]: "স্পিচ স্ক্রিপ্ট তৈরি বা পড়তে সমস্যা হয়েছে।" }));
+      setSpeakingPost(null);
+    } finally {
+      setSpeechLoading((prev) => ({ ...prev, [postId]: false }));
+    }
+  };
+
   const renderContent = (content) => {
     const sanitizedContent = DOMPurify.sanitize(content, {
-      ALLOWED_TAGS: ['p', 'b', 'i', 'u', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'br', 'div'],
-      ALLOWED_ATTR: ['href', 'target', 'class'],
+      ALLOWED_TAGS: ["p", "b", "i", "u", "strong", "em", "ul", "ol", "li", "a", "br", "div"],
+      ALLOWED_ATTR: ["href", "target", "class"],
     });
     return { __html: sanitizedContent };
   };
@@ -234,7 +282,7 @@ const Feed = () => {
                 <div className="text-3xl">{post.avatar}</div>
                 <div>
                   <div className="font-semibold text-gray-800">{post.user}</div>
-                  <div className="text-sm text-gray-500">{post.time}</div>
+                  <div className="text-sm text-gray-500">{formatBanglaTime(post.createdAt)}</div>
                 </div>
               </div>
               <span
@@ -250,16 +298,17 @@ const Feed = () => {
               dangerouslySetInnerHTML={renderContent(post.content)}
             />
 
-            {summaries[post.id] && !summaryError[post.id] && (
-              <div className="mb-4 p-4 bg-yellow-100 rounded-md text-gray-800">
-                <strong>সারাংশ: </strong>
-                <p>{summaries[post.id]}</p>
-              </div>
-            )}
-            {summaryError[post.id] && (
+            <SummaryComponent
+              postId={post.id}
+              content={post.content}
+              initialSummary={post.summary}
+              onSummarize={() => triggerSummarize(post.id)}
+            />
+
+            {speechError[post.id] && (
               <div className="mb-4 p-4 bg-red-100 rounded-md text-gray-800">
                 <strong>ত্রুটি: </strong>
-                <p>{summaryError[post.id]}</p>
+                <p>{speechError[post.id]}</p>
               </div>
             )}
 
@@ -296,67 +345,20 @@ const Feed = () => {
                 👎 {post.dislikes}
               </button>
               <button
-                onClick={() => handleSummarize(post.id, post.content)}
-                disabled={summaryLoading[post.id]}
-                className="flex items-center gap-1 text-purple-700 hover:text-purple-900 disabled:opacity-50"
+                onClick={() => handleGenerateAndSpeak(post.id, post.content)}
+                className={`flex items-center gap-1 ${speakingPost === post.id ? "text-green-600" : "text-gray-700"} hover:text-green-800 transition`}
+                disabled={speechLoading[post.id]}
+                aria-label={speakingPost === post.id ? "টেক্সট পড়া বন্ধ করুন" : "টেক্সট পড়ুন"}
               >
-                {summaryLoading[post.id] ? "সারাংশ লোড হচ্ছে..." : "সারাংশ"}
+                {speakingPost === post.id
+                  ? "🛑 বন্ধ করুন"
+                  : speechLoading[post.id]
+                  ? "লোড হচ্ছে..."
+                  : "🔊 শুনুন"}
               </button>
             </div>
 
-            <div className="border-t border-[color:var(--primary)] pt-5">
-              <h4 className="text-lg font-semibold mb-4 text-[color:var(--primary)]">মন্তব্যসমূহ</h4>
-
-              <div className="max-h-40 overflow-y-auto mb-5 space-y-3 pr-1">
-                {(commentsMap[post.id] || []).length === 0 ? (
-                  <p className="text-sm italic text-[color:var(--gray)]">কোনো মন্তব্য নেই। প্রথমে মন্তব্য করুন!</p>
-                ) : (
-                  (commentsMap[post.id] || []).map((comment) => (
-                    <div
-                      key={comment.id}
-                      className="bg-[color:var(--light)] rounded-lg p-4 shadow-sm"
-                    >
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-semibold text-[color:var(--secondary)]">{comment.user}</span>
-                        <span className="text-xs text-[color:var(--gray)]">
-                          {comment.createdAt?.seconds
-                            ? new Date(comment.createdAt.seconds * 1000).toLocaleString("bn-BD")
-                            : ""}
-                        </span>
-                      </div>
-                      <p className="text-[color:var(--dark)]">{comment.content}</p>
-                    </div>
-                  ))
-                )}
-              </div>
-
-              <div className="flex flex-col md:flex-row items-center gap-3">
-                <input
-                  type="text"
-                  placeholder="মন্তব্য লিখুন..."
-                  className="w-full border border-[color:var(--gray)] bg-[color:var(--light)] text-[color:var(--dark)] rounded-full px-4 py-2 focus:outline-none focus:ring-2 focus:ring-[color:var(--primary)] transition"
-                  value={commentInputs[post.id] || ""}
-                  onChange={(e) =>
-                    setCommentInputs((prev) => ({
-                      ...prev,
-                      [post.id]: e.target.value,
-                    }))
-                  }
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" && !e.shiftKey) {
-                      e.preventDefault();
-                      handleCommentSubmit(post.id);
-                    }
-                  }}
-                />
-                <button
-                  className="bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold px-6 py-2 rounded-lg shadow hover:from-green-400 hover:to-blue-500 transition-all"
-                  onClick={() => handleCommentSubmit(post.id)}
-                >
-                  পাঠান
-                </button>
-              </div>
-            </div>
+            <CommentComponent postId={post.id} user={currentUser} />
           </article>
         ))}
       </section>
