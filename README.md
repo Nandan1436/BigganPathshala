@@ -6,11 +6,6 @@
 - **Nandan Bhowmick**
 - **Md. Mahfuz Ibne Ali Ayon**
 
-<!-- Badges -->
-<p align="center">
-  <a href="https://github.com/CodeWithIsmail/BigganPathshala/graphs/contributors"><img src="https://img.shields.io/github/contributors/CodeWithIsmail/BigganPathshala" alt="Contributors"></a>
-  <a href="#localization"><img src="https://img.shields.io/badge/lang-bn--BD%20%7C%20en--US-blue" alt="Localization"></a>
-</p>
 
 [GitHub Repository](https://github.com/CodeWithIsmail/BigganPathshala)
 
