@@ -4,12 +4,14 @@ import PostInput from "./input";
 import React from "react";
 import {
   collection,
-  getDocs,
   doc,
   updateDoc,
   getDoc,
   query,
   orderBy,
+  onSnapshot,
+  setDoc,
+  increment,
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
@@ -38,11 +40,12 @@ const Feed = () => {
     return () => unsubscribe();
   }, []);
 
+  // Listen for real-time updates to blog posts
   useEffect(() => {
-    const fetchBlogs = async () => {
-      try {
-        const postsQuery = query(collection(db, "blog"), orderBy("createdAt", "desc"));
-        const querySnapshot = await getDocs(postsQuery);
+    const postsQuery = query(collection(db, "blog"), orderBy("createdAt", "desc"));
+    const unsubscribe = onSnapshot(
+      postsQuery,
+      (querySnapshot) => {
         const firebasePosts = querySnapshot.docs.map((doc) => {
           const data = doc.data();
           return {
@@ -66,14 +69,7 @@ const Feed = () => {
           };
         });
 
-        setPosts((prev) => {
-          const allPosts = [...firebasePosts, ...prev];
-          const uniquePostsMap = new Map();
-          allPosts.forEach((post) => {
-            uniquePostsMap.set(post.id, post);
-          });
-          return Array.from(uniquePostsMap.values());
-        });
+        setPosts(firebasePosts);
         setSpeechScripts((prev) => {
           const newScripts = {};
           firebasePosts.forEach((post) => {
@@ -81,56 +77,84 @@ const Feed = () => {
           });
           return { ...prev, ...newScripts };
         });
-      } catch (err) {
-        console.error("Error fetching blogs:", err);
+      },
+      (error) => {
+        console.error("Error listening to blogs:", error);
       }
-    };
-    fetchBlogs();
+    );
+
+    return () => unsubscribe();
   }, []);
 
   const handleReaction = async (postId, type) => {
-    const userActions = JSON.parse(localStorage.getItem("userPostActions") || "{}");
-    const prevAction = userActions[postId];
+    if (!currentUser) {
+      console.log("User not logged in");
+      return;
+    }
 
-    setPosts((prevPosts) => {
-      return prevPosts.map((post) => {
-        if (post.id === postId) {
-          let likes = post.likes;
-          let dislikes = post.dislikes;
+    const reactionRef = doc(db, "blog", postId, "reactions", currentUser.uid);
+    const postRef = doc(db, "blog", postId);
 
-          if (prevAction === type) {
-            if (type === "like") likes = Math.max(likes - 1, 0);
-            if (type === "dislike") dislikes = Math.max(dislikes - 1, 0);
-            delete userActions[postId];
-          } else {
-            if (prevAction === "like") likes = Math.max(likes - 1, 0);
-            if (prevAction === "dislike") dislikes = Math.max(dislikes - 1, 0);
+    try {
+      // Check existing reaction
+      const reactionSnap = await getDoc(reactionRef);
+      const prevReaction = reactionSnap.exists() ? reactionSnap.data().type : null;
 
-            if (type === "like") likes++;
-            if (type === "dislike") dislikes++;
-            userActions[postId] = type;
+      // Optimistically update UI
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.id === postId) {
+            let likes = post.likes;
+            let dislikes = post.dislikes;
+
+            if (prevReaction === type) {
+              // Undo reaction
+              if (type === "like") likes = Math.max(likes - 1, 0);
+              if (type === "dislike") dislikes = Math.max(dislikes - 1, 0);
+            } else {
+              // Remove previous reaction
+              if (prevReaction === "like") likes = Math.max(likes - 1, 0);
+              if (prevReaction === "dislike") dislikes = Math.max(dislikes - 1, 0);
+              // Add new reaction
+              if (type === "like") likes++;
+              if (type === "dislike") dislikes++;
+            }
+
+            return { ...post, likes, dislikes };
           }
+          return post;
+        })
+      );
 
-          localStorage.setItem("userPostActions", JSON.stringify(userActions));
-
-          if (typeof postId === "string") {
-            updateDoc(doc(db, "blog", postId), {
-              likes,
-              dislikes,
-            }).catch((error) => {
-              console.error("Error updating reaction:", error);
-            });
+      // Update Firestore
+      const postSnap = await getDoc(postRef); // Fetch post data for accurate counts
+      if (prevReaction === type) {
+        // Remove reaction
+        await setDoc(reactionRef, { type: null, uid: currentUser.uid, timestamp: new Date() }, { merge: true });
+        await updateDoc(postRef, {
+          likes: prevReaction === "like" ? increment(-1) : postSnap.data().likes,
+          dislikes: prevReaction === "dislike" ? increment(-1) : postSnap.data().dislikes,
+        });
+      } else {
+        // Add or update reaction (mutually exclusive)
+        await setDoc(reactionRef, { type, uid: currentUser.uid, timestamp: new Date() }, { merge: true });
+        await updateDoc(postRef, {
+          likes: type === "like" ? increment(1) : prevReaction === "like" ? increment(-1) : postSnap.data().likes,
+          dislikes: type === "dislike" ? increment(1) : prevReaction === "dislike" ? increment(-1) : postSnap.data().dislikes,
+        });
+      }
+    } catch (error) {
+      console.error("Error handling reaction:", error);
+      // Revert UI on error
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.id === postId) {
+            return { ...post, likes: post.likes, dislikes: post.dislikes };
           }
-
-          return {
-            ...post,
-            likes,
-            dislikes,
-          };
-        }
-        return post;
-      });
-    });
+          return post;
+        })
+      );
+    }
   };
 
   const triggerSummarize = (postId) => {
@@ -213,8 +237,8 @@ const Feed = () => {
 
   const renderContent = (content) => {
     const sanitizedContent = DOMPurify.sanitize(content, {
-      ALLOWED_TAGS: ['p', 'b', 'i', 'u', 'strong', 'em', 'ul', 'ol', 'li', 'a', 'br', 'div'],
-      ALLOWED_ATTR: ['href', 'target', 'class'],
+      ALLOWED_TAGS: ["p", "b", "i", "u", "strong", "em", "ul", "ol", "li", "a", "br", "div"],
+      ALLOWED_ATTR: ["href", "target", "class"],
     });
     return { __html: sanitizedContent };
   };

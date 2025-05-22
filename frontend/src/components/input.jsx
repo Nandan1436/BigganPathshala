@@ -37,6 +37,37 @@ const formatBanglaTime = (date) => {
   }
 };
 
+// Utility function to extract meaningful text from HTML content
+const getMeaningfulText = (htmlContent, quillEditor) => {
+  // Try Quill's getText() first
+  if (quillEditor) {
+    let text = quillEditor.getText();
+    // Normalize newlines and invisible characters
+    text = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+    console.log("Quill getText:", text);
+    if (text && text !== '') {
+      return text;
+    }
+  }
+
+  // Fallback: Parse HTML content
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = htmlContent;
+
+  // Remove non-content tags
+  ['script', 'style', 'head', 'meta', 'noscript'].forEach(tag => {
+    const elements = tempDiv.getElementsByTagName(tag);
+    Array.from(elements).forEach(el => el.remove());
+  });
+
+  // Get text content and clean up
+  let text = tempDiv.textContent || tempDiv.innerText || '';
+  text = text.replace(/[\r\n]+/g, ' ').replace(/\s+/g, ' ').trim();
+  console.log("HTML parsed text:", text);
+
+  return text;
+};
+
 function PostInput() {
     const [showForm, setShowForm] = useState(false);
     const [content, setContent] = useState('');
@@ -47,6 +78,10 @@ function PostInput() {
     const [submitted, setSubmitted] = useState(false);
     const [currentUser, setCurrentUser] = useState(null);
     const [username, setUsername] = useState('');
+    const [error, setError] = useState('');
+
+    // Reference to ReactQuill instance
+    const quillRef = React.useRef(null);
 
     // Listen for auth state changes and fetch username
     useEffect(() => {
@@ -81,19 +116,40 @@ function PostInput() {
     };
 
     const handleImageChange = (e) => {
-        setImage(URL.createObjectURL(e.target.files[0]));
+        if (e.target.files[0]) {
+            setImage(URL.createObjectURL(e.target.files[0]));
+        }
     };
 
     const handleShareSubmit = async (e) => {
         e.preventDefault();
+        setError('');
 
         if (!currentUser) {
-            alert("পোস্ট করতে লগইন করুন।");
+            setError("পোস্ট করতে লগইন করুন।");
             return;
         }
 
-        if (!content.trim()) {
-            alert("পোস্টের কনটেন্ট খালি থাকতে পারে না।");
+        // Get plain text from ReactQuill or HTML
+        const quill = quillRef.current?.getEditor();
+        const plainContent = getMeaningfulText(content, quill);
+        console.log("Raw content:", content);
+        console.log("Plain content:", plainContent);
+        if (quill) {
+            console.log("Quill content:", quill.getContents());
+        }
+
+        // Check if content is empty
+        if (!plainContent) {
+            setError("পোস্টের কনটেন্ট খালি থাকতে পারে না। দয়া করে পাঠ্য সামগ্রী লিখুন বা কপি করা বিষয়বস্তু পরীক্ষা করুন।");
+            return;
+        }
+
+        // Additional check for raw content to avoid false negatives
+        const rawText = content.replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+        console.log("Raw text (fallback):", rawText);
+        if (!rawText && content.trim() === '<p><br></p>') {
+            setError("পোস্টের কনটেন্ট খালি থাকতে পারে না। দয়া করে পাঠ্য সামগ্রী লিখুন।");
             return;
         }
 
@@ -104,17 +160,17 @@ function PostInput() {
                 uid: currentUser.uid,
                 avatar: currentUser.photoURL || "👤",
                 content,
-                image,
+                image: image || '',
                 category,
-                tags,
+                tags: tags.length > 0 ? tags : [],
                 createdAt: serverTimestamp(),
-                time: formatBanglaTime(now), // Store human-readable Bangla time
+                time: formatBanglaTime(now),
                 tag: category,
                 tagColor: "#3B82F6",
                 likes: 0,
                 dislikes: 0,
                 summary: "",
-                comments: [],
+                comments: 0,
                 factChecked: false,
                 credibility: 0,
                 featured: false,
@@ -128,10 +184,11 @@ function PostInput() {
                 setTags([]);
                 setCategory('পদার্থ বিজ্ঞান');
                 setShowForm(false);
+                setError('');
             }, 3000);
         } catch (error) {
             console.error("Error adding document:", error);
-            alert("❌ পোস্ট সংরক্ষণ ব্যর্থ হয়েছে!");
+            setError(`পোস্ট সংরক্ষণ ব্যর্থ হয়েছে: ${error.message}`);
         }
     };
 
@@ -169,8 +226,15 @@ function PostInput() {
                             </div>
                         ) : (
                             <form onSubmit={handleShareSubmit} className="flex flex-col gap-6 flex-1 overflow-hidden">
+                                {/* Error message display */}
+                                {error && (
+                                    <div className="bg-red-100 text-red-700 p-3 rounded-lg">
+                                        {error}
+                                    </div>
+                                )}
                                 <div className="flex-1 overflow-y-auto">
                                     <ReactQuill
+                                        ref={quillRef}
                                         value={content}
                                         onChange={setContent}
                                         modules={{
@@ -181,7 +245,7 @@ function PostInput() {
                                             ]
                                         }}
                                         formats={['bold', 'italic', 'underline', 'list', 'bullet']}
-                                        placeholder="আপনার বিজ্ঞান বিষয়ক কন্টেন্ট লিখুন..."
+                                        placeholder="আপনার বিজ্ঞান বিষয়ক কনটেন্ট লিখুন..."
                                         className="bg-white/70 border border-blue-200 rounded-lg shadow focus:ring-2 focus:ring-blue-400 mb-4"
                                     />
 
