@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { colors } from "./styles";
 import PostInput from "./input";
+import { ThumbsUp, ThumbsDown } from "lucide-react";
 import React from "react";
 import {
   collection,
@@ -22,6 +23,70 @@ import SummaryComponent from "./SummaryComponent";
 import { formatBanglaTime } from "../utils/timeUtils";
 
 const auth = getAuth();
+
+// Function to update reputation
+const updateUserReputation = async (db, userId, increment) => {
+  const userRef = doc(db, "users", userId);
+  const reputationTitles = [
+    { max: 50, title: "Newbie" },
+    { max: 100, title: "Learner" },
+    { max: 250, title: "Contributor" },
+    { max: 500, title: "Expert" },
+    { max: Infinity, title: "Master" },
+  ];
+
+  try {
+    await runTransaction(db, async (transaction) => {
+      const userDoc = await transaction.get(userRef);
+      if (!userDoc.exists()) {
+        throw new Error(`User ${userId} not found`);
+      }
+      const currentReputation = userDoc.data().reputation || 0;
+      const newReputation = Math.max(0, currentReputation + increment);
+      const newTitle = reputationTitles.find(({ max }) => newReputation <= max).title;
+
+      transaction.update(userRef, {
+        reputation: newReputation,
+        reputationTitle: newTitle,
+      });
+    });
+  } catch (err) {
+    console.error(`Error updating reputation for user ${userId}:`, err);
+  }
+};
+
+// Function to sync avatar with profilePic
+const syncAvatarWithProfilePic = async (blogId, uid) => {
+  try {
+    const blogRef = doc(db, "blog", blogId);
+    const blogSnap = await getDoc(blogRef);
+    
+    if (!blogSnap.exists()) {
+      console.error(`Blog ${blogId} not found`);
+      return;
+    }
+
+    const blogData = blogSnap.data();
+    if (blogData.avatar !== "👤") {
+      return;
+    }
+
+    const userRef = doc(db, "users", uid);
+    const userSnap = await getDoc(userRef);
+    let profilePic = "👤";
+    
+    if (userSnap.exists()) {
+      profilePic = userSnap.data().profilePic || "👤";
+    } else {
+      console.warn(`User ${uid} not found, keeping avatar as 👤`);
+    }
+
+    await updateDoc(blogRef, { avatar: profilePic });
+    console.log(`Updated avatar for blog ${blogId} to ${profilePic}`);
+  } catch (error) {
+    console.error(`Error syncing avatar for blog ${blogId}:`, error);
+  }
+};
 
 const Feed = () => {
   const [posts, setPosts] = useState([]);
@@ -56,10 +121,14 @@ const Feed = () => {
     const unsubscribe = onSnapshot(
       postsQuery,
       (querySnapshot) => {
-        const firebasePosts = querySnapshot.docs.map((doc) => {
-          const data = doc.data();
+        const firebasePosts = querySnapshot.docs.map((docSnapshot) => {
+          const data = docSnapshot.data();
+          // Sync avatar if it's 👤
+          if (data.avatar === "👤" && data.uid) {
+            syncAvatarWithProfilePic(docSnapshot.id, data.uid);
+          }
           return {
-            id: doc.id,
+            id: docSnapshot.id,
             user: data.user || "অজ্ঞাত ব্যবহারকারী",
             avatar: data.avatar || "👤",
             tag: data.tag || "সাধারণ",
@@ -71,7 +140,7 @@ const Feed = () => {
             likes: data.likes ?? 0,
             dislikes: data.dislikes ?? 0,
             comments: data.comments ?? 0,
-            createdAt: data.createdAt, // Use Firestore Timestamp
+            createdAt: data.createdAt,
             tags: data.tags || [],
             featured: data.featured ?? false,
             summary: data.summary || null,
@@ -106,11 +175,16 @@ const Feed = () => {
     const postRef = doc(db, "blog", postId);
 
     try {
-      // Check existing reaction
       const reactionSnap = await getDoc(reactionRef);
       const prevReaction = reactionSnap.exists() ? reactionSnap.data().type : null;
 
-      // Optimistically update UI
+      const postSnap = await getDoc(postRef);
+      const postOwnerUid = postSnap.data().uid;
+      if (postOwnerUid === currentUser.uid) {
+        console.log("Cannot react to own post");
+        return;
+      }
+
       setPosts((prevPosts) =>
         prevPosts.map((post) => {
           if (post.id === postId) {
@@ -118,14 +192,11 @@ const Feed = () => {
             let dislikes = post.dislikes;
 
             if (prevReaction === type) {
-              // Undo reaction
               if (type === "like") likes = Math.max(likes - 1, 0);
               if (type === "dislike") dislikes = Math.max(dislikes - 1, 0);
             } else {
-              // Remove previous reaction
               if (prevReaction === "like") likes = Math.max(likes - 1, 0);
               if (prevReaction === "dislike") dislikes = Math.max(dislikes - 1, 0);
-              // Add new reaction
               if (type === "like") likes++;
               if (type === "dislike") dislikes++;
             }
@@ -136,26 +207,36 @@ const Feed = () => {
         })
       );
 
-      // Update Firestore
-      const postSnap = await getDoc(postRef); // Fetch post data for accurate counts
       if (prevReaction === type) {
-        // Remove reaction
         await setDoc(reactionRef, { type: null, uid: currentUser.uid, timestamp: new Date() }, { merge: true });
         await updateDoc(postRef, {
           likes: prevReaction === "like" ? increment(-1) : postSnap.data().likes,
           dislikes: prevReaction === "dislike" ? increment(-1) : postSnap.data().dislikes,
         });
+        if (prevReaction === "like") {
+          await updateUserReputation(db, postOwnerUid, -1);
+        } else if (prevReaction === "dislike") {
+          await updateUserReputation(db, postOwnerUid, 1);
+        }
       } else {
-        // Add or update reaction (mutually exclusive)
         await setDoc(reactionRef, { type, uid: currentUser.uid, timestamp: new Date() }, { merge: true });
         await updateDoc(postRef, {
           likes: type === "like" ? increment(1) : prevReaction === "like" ? increment(-1) : postSnap.data().likes,
           dislikes: type === "dislike" ? increment(1) : prevReaction === "dislike" ? increment(-1) : postSnap.data().dislikes,
         });
+        if (type === "like") {
+          await updateUserReputation(db, postOwnerUid, 1);
+        } else if (type === "dislike") {
+          await updateUserReputation(db, postOwnerUid, -1);
+        }
+        if (prevReaction === "like") {
+          await updateUserReputation(db, postOwnerUid, -1);
+        } else if (prevReaction === "dislike") {
+          await updateUserReputation(db, postOwnerUid, 1);
+        }
       }
     } catch (error) {
       console.error("Error handling reaction:", error);
-      // Revert UI on error
       setPosts((prevPosts) =>
         prevPosts.map((post) => {
           if (post.id === postId) {
@@ -259,11 +340,6 @@ const Feed = () => {
       <section className="max-w-4xl mx-auto p-4">
         <div className="flex items-center justify-between mb-6">
           <h2 className="text-2xl font-bold text-gray-800">বিজ্ঞান ফিড</h2>
-          {/* <div className="space-x-2">
-            <button className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700">সকল</button>
-            <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">জনপ্রিয়</button>
-            <button className="px-4 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300">নতুন</button>
-          </div> */}
         </div>
 
         {posts.map((post) => (
@@ -279,7 +355,17 @@ const Feed = () => {
 
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-4">
-                <div className="text-3xl">{post.avatar}</div>
+                <div className="w-10 h-10">
+                  {post.avatar && post.avatar !== "👤" && post.avatar.startsWith("http") ? (
+                    <img
+                      src={post.avatar}
+                      alt={`${post.user} profile picture`}
+                      className="w-10 h-10 rounded-full object-cover border-2 border-blue-300"
+                    />
+                  ) : (
+                    <span className="text-3xl">👤</span>
+                  )}
+                </div>
                 <div>
                   <div className="font-semibold text-gray-800">{post.user}</div>
                   <div className="text-sm text-gray-500">{formatBanglaTime(post.createdAt)}</div>
@@ -332,18 +418,47 @@ const Feed = () => {
             </div>
 
             <div className="flex gap-6 items-center mb-4">
-              <button
-                onClick={() => handleReaction(post.id, "like")}
-                className={`flex items-center gap-1 ${post.likes > 0 ? "text-blue-600" : "text-gray-500"}`}
-              >
-                👍 {post.likes}
-              </button>
-              <button
-                onClick={() => handleReaction(post.id, "dislike")}
-                className={`flex items-center gap-1 ${post.dislikes > 0 ? "text-red-600" : "text-gray-500"}`}
-              >
-                👎 {post.dislikes}
-              </button>
+              {currentUser ? (
+                <>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleReaction(post.id, "like")}
+                      className={`flex items-center justify-center p-1 rounded-full transition-all ${
+                        post.likes > 0 && currentUser ? "bg-green-100 text-green-700" : "text-gray-500 hover:text-green-600 hover:bg-green-50"
+                      }`}
+                      aria-label="Like post"
+                      type="button"
+                    >
+                      <ThumbsUp size={16} className={post.likes > 0 && currentUser ? "fill-green-700" : ""} />
+                    </button>
+                    <span className="text-sm font-medium">{post.likes}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => handleReaction(post.id, "dislike")}
+                      className={`flex items-center justify-center p-1 rounded-full transition-all ${
+                        post.dislikes > 0 && currentUser ? "bg-red-100 text-red-700" : "text-gray-500 hover:text-red-600 hover:bg-red-50"
+                      }`}
+                      aria-label="Dislike post"
+                      type="button"
+                    >
+                      <ThumbsDown size={16} className={post.dislikes > 0 && currentUser ? "fill-red-700" : ""} />
+                    </button>
+                    <span className="text-sm font-medium">{post.dislikes}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1">
+                    <ThumbsUp size={16} className="text-gray-400" />
+                    <span className="text-sm font-medium">{post.likes}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <ThumbsDown size={16} className="text-gray-400" />
+                    <span className="text-sm font-medium">{post.dislikes}</span>
+                  </div>
+                </>
+              )}
               <button
                 onClick={() => handleGenerateAndSpeak(post.id, post.content)}
                 className={`flex items-center gap-1 ${speakingPost === post.id ? "text-green-600" : "text-gray-700"} hover:text-green-800 transition`}
