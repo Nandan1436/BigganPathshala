@@ -16,7 +16,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { getAuth } from "firebase/auth";
-import { generateSummaryWithGemini } from "../firebase/firestore";
+import { generateSummaryWithGemini, generateSpeechScriptWithGemini } from "../firebase/firestore";
 import DOMPurify from "dompurify";
 
 const auth = getAuth();
@@ -26,10 +26,13 @@ const Feed = () => {
   const [posts, setPosts] = useState([]);
   const [commentInputs, setCommentInputs] = useState({});
   const [commentsMap, setCommentsMap] = useState({});
-
   const [summaries, setSummaries] = useState({});
   const [summaryLoading, setSummaryLoading] = useState({});
   const [summaryError, setSummaryError] = useState({});
+  const [speakingPost, setSpeakingPost] = useState(null); // Track which post is being read aloud
+  const [speechScripts, setSpeechScripts] = useState({});
+  const [speechLoading, setSpeechLoading] = useState({});
+  const [speechError, setSpeechError] = useState({});
 
   useEffect(() => {
     const fetchBlogs = async () => {
@@ -54,6 +57,7 @@ const Feed = () => {
             tags: data.tags || [],
             featured: data.featured ?? false,
             summary: data.summary || null,
+            speechScript: data.speechScript || null,
           };
         });
 
@@ -71,6 +75,13 @@ const Feed = () => {
             if (post.summary) newSummaries[post.id] = post.summary;
           });
           return { ...prev, ...newSummaries };
+        });
+        setSpeechScripts((prev) => {
+          const newScripts = {};
+          firebasePosts.forEach((post) => {
+            if (post.speechScript) newScripts[post.id] = post.speechScript;
+          });
+          return { ...prev, ...newScripts };
         });
       } catch (err) {
         console.error("Error fetching blogs:", err);
@@ -196,6 +207,88 @@ const Feed = () => {
     }
   };
 
+  // Function to clean HTML content
+  const cleanHTML = (content) => {
+    const div = document.createElement("div");
+    div.innerHTML = DOMPurify.sanitize(content);
+    return div.textContent || div.innerText || "";
+  };
+
+  // Function to handle text-to-speech with Gemini-generated script
+  const handleGenerateAndSpeak = async (postId, content) => {
+    const synth = window.speechSynthesis;
+
+    // If this post is already speaking, stop it
+    if (speakingPost === postId) {
+      synth.cancel();
+      setSpeakingPost(null);
+      return;
+    }
+
+    // Stop any other speaking post
+    if (synth.speaking) {
+      synth.cancel();
+    }
+
+    // Mark as loading
+    setSpeechLoading((prev) => ({ ...prev, [postId]: true }));
+    setSpeechError((prev) => ({ ...prev, [postId]: null }));
+
+    try {
+      let script = speechScripts[postId];
+
+      // If not already generated, fetch from Firestore or generate
+      if (!script) {
+        const postRef = doc(db, "blog", postId.toString());
+        const postSnap = await getDoc(postRef);
+        const existingScript = postSnap.data()?.speechScript;
+
+        if (existingScript) {
+          script = existingScript;
+          setSpeechScripts((prev) => ({ ...prev, [postId]: script }));
+        } else {
+          // Clean HTML before generating script
+          const cleanContent = cleanHTML(content);
+          if (!cleanContent.trim()) {
+            throw new Error("No readable content found");
+          }
+
+          script = await generateSpeechScriptWithGemini(cleanContent);
+          if (!script) {
+            throw new Error("Failed to generate speech script");
+          }
+
+          // Save to Firestore
+          await updateDoc(postRef, {
+            speechScript: script,
+          });
+
+          setSpeechScripts((prev) => ({ ...prev, [postId]: script }));
+        }
+      }
+
+      // Speak the script
+      const utterance = new SpeechSynthesisUtterance(script);
+      utterance.lang = "bn-BD";
+      utterance.rate = 0.8; // Slower for clarity
+      utterance.onend = () => setSpeakingPost(null);
+      utterance.onerror = (event) => {
+        console.error("Speech synthesis error:", event);
+        setSpeechError((prev) => ({ ...prev, [postId]: "টেক্সট পড়তে সমস্যা হয়েছে।" }));
+        setSpeakingPost(null);
+      };
+
+      synth.speak(utterance);
+      setSpeakingPost(postId);
+    } catch (error) {
+      console.error("Speech script error:", error);
+      setSpeechError((prev) => ({ ...prev, [postId]: "স্পিচ স্ক্রিপ্ট তৈরি বা পড়তে সমস্যা হয়েছে।" }));
+      setSpeakingPost(null);
+    } finally {
+      setSpeechLoading((prev) => ({ ...prev, [postId]: false }));
+    }
+  };
+
   // Function to sanitize and render HTML content
   const renderContent = (content) => {
     const sanitizedContent = DOMPurify.sanitize(content, {
@@ -262,6 +355,12 @@ const Feed = () => {
                 <p>{summaryError[post.id]}</p>
               </div>
             )}
+            {speechError[post.id] && (
+              <div className="mb-4 p-4 bg-red-100 rounded-md text-gray-800">
+                <strong>ত্রুটি: </strong>
+                <p>{speechError[post.id]}</p>
+              </div>
+            )}
 
             {post.image && (
               <img
@@ -301,6 +400,18 @@ const Feed = () => {
                 className="flex items-center gap-1 text-purple-700 hover:text-purple-900 disabled:opacity-50"
               >
                 {summaryLoading[post.id] ? "সারাংশ লোড হচ্ছে..." : "সারাংশ"}
+              </button>
+              <button
+                onClick={() => handleGenerateAndSpeak(post.id, post.content)}
+                className={`flex items-center gap-1 ${speakingPost === post.id ? "text-green-600" : "text-gray-700"} hover:text-green-800 transition`}
+                disabled={speechLoading[post.id]}
+                aria-label={speakingPost === post.id ? "টেক্সট পড়া বন্ধ করুন" : "টেক্সট পড়ুন"}
+              >
+                {speakingPost === post.id
+                  ? "🛑 বন্ধ করুন"
+                  : speechLoading[post.id]
+                  ? "লোড হচ্ছে..."
+                  : "🔊 শুনুন"}
               </button>
             </div>
 

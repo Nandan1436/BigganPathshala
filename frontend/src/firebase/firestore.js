@@ -154,3 +154,32 @@ export async function generateSummaryWithGemini(content) {
     return null;
   }
 }
+
+/**
+ * Generate a spoken-friendly Bengali script for a blog using Gemini.
+ * This is not a summary — it's a natural conversational readout of the blog.
+ *
+ * @param {string} blogContent - The full blog text/content.
+ * @returns {Promise<string>} - A Bengali natural spoken version of the blog.
+ */
+export async function generateSpeechScriptWithGemini(blogContent) {
+  const prompt = `তুমি একজন প্রফেশনাল ব্লগ পাঠক এবং বক্তা। নিচের ব্লগটি একটি রেডিও বা অডিও প্ল্যাটফর্মে পড়ে শোনাতে হবে। ব্লগের মূল ভাব বজায় রেখে, বাংলায় একটি প্রাঞ্জল, কথ্যভাষায় উপস্থাপনযোগ্য স্ক্রিপ্ট তৈরি করো। এটি যেন একজন মানুষ সুন্দরভাবে পড়ে শুনাতে পারে এমন হয়।
+
+ফরম্যাট হবে সাধারণ বাংলা টেক্সট, কোনো কোড বা ট্যাগ ছাড়াই।
+
+ব্লগ কনটেন্ট:
+"""
+${blogContent}
+"""`;
+
+  try {
+    const result = await geminiModel.generateContent(prompt);
+    const response = result.response;
+    const text = response.text();
+
+    return text.trim();
+  } catch (error) {
+    console.error("Gemini speech script generation error:", error);
+    return null;
+  }
+}
