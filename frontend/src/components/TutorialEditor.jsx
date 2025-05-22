@@ -1,6 +1,17 @@
-import { useState } from "react";
-import ReactQuill from "react-quill";
+import Underline from "@tiptap/extension-underline";
+import { EditorContent, useEditor } from "@tiptap/react";
 import React from "react";
+import StarterKit from "@tiptap/starter-kit";
+import { getAuth } from "firebase/auth";
+import {
+  addDoc,
+  collection,
+  getDocs,
+  getFirestore,
+  orderBy,
+  query,
+} from "firebase/firestore";
+import { useEffect, useState } from "react";
 import "react-quill/dist/quill.snow.css";
 import {
   createTutorial,
@@ -10,6 +21,8 @@ import {
 
 const CLOUDINARY_UPLOAD_PRESET = "healthTracker"; // Replace with your Cloudinary preset
 const CLOUDINARY_CLOUD_NAME = "ismailCloud"; // Replace with your Cloudinary cloud name
+
+const db = getFirestore();
 
 const TutorialGuidelines = () => (
   <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-blue-900/90">
@@ -41,6 +54,15 @@ const TutorialEditor = () => {
   const [loading, setLoading] = useState(false);
   const [quiz, setQuiz] = useState(null);
   const [success, setSuccess] = useState(false);
+  const [tutorialId, setTutorialId] = useState(null);
+  const [rating, setRating] = useState(0);
+  const [userRating, setUserRating] = useState(null);
+  const [reviews, setReviews] = useState([]);
+  const [reviewInput, setReviewInput] = useState("");
+  const [reviewLoading, setReviewLoading] = useState(false);
+
+  const auth = getAuth();
+  const user = auth.currentUser;
 
   const handleTagAdd = () => {
     if (tagInput && !tags.includes(tagInput)) {
@@ -93,16 +115,21 @@ const TutorialEditor = () => {
         quizzes = await generateQuizzesWithGemini(content);
         setQuiz(quizzes);
       }
-      // Create the tutorial document (without quiz)
+      // Create the tutorial document (with author and initial rating)
       const tutorialId = await createTutorial({
         title,
         content,
         tags,
         image: imageUrl,
         createdAt: Date.now(),
+        author: user?.displayName || user?.email || "Anonymous",
+        authorId: user?.uid || null,
+        points: 0, // initial rating
+        ratings: [], // for future: store user ratings
       });
       // Store quizzes in subcollection
       await saveTutorialQuizzes(tutorialId, quizzes);
+      setTutorialId(tutorialId);
       setSuccess(true);
       setTitle("");
       setContent("");
@@ -117,8 +144,58 @@ const TutorialEditor = () => {
     setLoading(false);
   };
 
+  // Fetch reviews for this tutorial (if editing or after creation)
+  useEffect(() => {
+    if (!tutorialId) return;
+    const fetchReviews = async () => {
+      const reviewsRef = collection(db, "tutorials", tutorialId, "reviews");
+      const q = query(reviewsRef, orderBy("createdAt", "desc"));
+      const snap = await getDocs(q);
+      setReviews(snap.docs.map((doc) => ({ id: doc.id, ...doc.data() })));
+    };
+    fetchReviews();
+  }, [tutorialId, reviewLoading]);
+
+  // Submit a review
+  const handleReviewSubmit = async (e) => {
+    e.preventDefault();
+    if (!user || !reviewInput.trim() || !tutorialId) return;
+    setReviewLoading(true);
+    const reviewsRef = collection(db, "tutorials", tutorialId, "reviews");
+    await addDoc(reviewsRef, {
+      userId: user.uid,
+      userName: user.displayName || user.email || "Anonymous",
+      comment: reviewInput.trim(),
+      createdAt: Date.now(),
+    });
+    setReviewInput("");
+    setReviewLoading(false);
+  };
+
+  // Submit a rating (1-5 stars)
+  const handleRating = async (star) => {
+    if (!user || !tutorialId) return;
+    setUserRating(star);
+    // Store rating in a subcollection
+    const ratingsRef = collection(db, "tutorials", tutorialId, "ratings");
+    await addDoc(ratingsRef, {
+      userId: user.uid,
+      userName: user.displayName || user.email || "Anonymous",
+      rating: star,
+      createdAt: Date.now(),
+    });
+    // Optionally: update tutorial points/average
+  };
+
+  // Tiptap editor setup
+  const editor = useEditor({
+    extensions: [StarterKit, Underline],
+    content,
+    onUpdate: ({ editor }) => setContent(editor.getHTML()),
+  });
+
   return (
-    <section className="max-w-2xl mx-auto py-8 px-2">
+    <section className="w-full mx-auto py-4 px-3">
       <h2 className="text-3xl font-extrabold text-center bg-gradient-to-r from-blue-500 to-green-400 bg-clip-text text-transparent mb-4">
         নতুন টিউটোরিয়াল তৈরি করুন
       </h2>
@@ -147,24 +224,75 @@ const TutorialEditor = () => {
         </div>
         <div>
           <label className="block font-semibold text-blue-900 mb-2">
-            বিষয়বস্তু
+            বিস্তারিত লিখুন
           </label>
-          <ReactQuill
-            value={content}
-            onChange={setContent}
-            theme="snow"
-            className="bg-white rounded-lg"
-            placeholder="এখানে আপনার টিউটোরিয়াল লিখুন..."
-            modules={{
-              toolbar: [
-                [{ header: [1, 2, 3, false] }],
-                ["bold", "italic", "underline", "strike"],
-                [{ list: "ordered" }, { list: "bullet" }],
-                ["link", "image"],
-                ["clean"],
-              ],
-            }}
-          />
+          <div className="bg-white rounded-lg border border-blue-200 p-2 min-h-[300px]">
+            <EditorContent editor={editor} />
+          </div>
+          {/* <div className="flex gap-2 mt-2">
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleBold().run()}
+              className="px-3 py-1 rounded bg-blue-100 text-blue-700 font-bold"
+            >
+              B
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleItalic().run()}
+              className="px-3 py-1 rounded bg-blue-100 text-blue-700 font-bold italic"
+            >
+              I
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleUnderline().run()}
+              className="px-3 py-1 rounded bg-blue-100 text-blue-700 font-bold underline"
+            >
+              U
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                editor.chain().focus().toggleHeading({ level: 1 }).run()
+              }
+              className="px-3 py-1 rounded bg-blue-100 text-blue-700 font-bold"
+            >
+              H1
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                editor.chain().focus().toggleHeading({ level: 2 }).run()
+              }
+              className="px-3 py-1 rounded bg-blue-100 text-blue-700 font-bold"
+            >
+              H2
+            </button>
+            <button
+              type="button"
+              onClick={() =>
+                editor.chain().focus().toggleHeading({ level: 3 }).run()
+              }
+              className="px-3 py-1 rounded bg-blue-100 text-blue-700 font-bold"
+            >
+              H3
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleBulletList().run()}
+              className="px-3 py-1 rounded bg-blue-100 text-blue-700 font-bold"
+            >
+              • List
+            </button>
+            <button
+              type="button"
+              onClick={() => editor.chain().focus().toggleOrderedList().run()}
+              className="px-3 py-1 rounded bg-blue-100 text-blue-700 font-bold"
+            >
+              1. List
+            </button>
+          </div> */}
         </div>
         <div>
           <label className="block font-semibold text-blue-900 mb-2">
@@ -177,7 +305,7 @@ const TutorialEditor = () => {
             className="block w-full text-blue-900 border border-blue-200 rounded-lg p-2 bg-white/80"
           />
           {loading && (
-            <div className="text-blue-500 mt-2">ছবি আপলোড হচ্ছে...</div>
+            <div className="text-blue-500 mt-2"></div>
           )}
           {image && (
             <div className="flex items-center gap-4 mt-2">
@@ -245,14 +373,14 @@ const TutorialEditor = () => {
           >
             {showPreview ? "এডিট করুন" : "প্রিভিউ দেখুন"}
           </button>
-          <button
+          {/* <button
             type="button"
             onClick={handleGenerateQuiz}
             className="bg-gradient-to-r from-yellow-400 to-green-400 text-white font-bold px-6 py-2 rounded-lg shadow hover:from-green-400 hover:to-yellow-400 transition-all"
             disabled={loading}
           >
             কুইজ তৈরি করুন
-          </button>
+          </button> */}
           <button
             type="submit"
             className="bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold px-6 py-2 rounded-lg shadow hover:from-green-400 hover:to-blue-500 transition-all"
@@ -287,7 +415,7 @@ const TutorialEditor = () => {
               </span>
             ))}
           </div>
-          {quiz && (
+          {/* {quiz && (
             <div className="mt-4">
               <h5 className="font-bold text-lg mb-2">Quiz Preview</h5>
               {quiz.easy && (
@@ -359,9 +487,71 @@ const TutorialEditor = () => {
                 </div>
               )}
             </div>
-          )}
+          )} */}
         </div>
       )}
+      {/* {tutorialId && (
+        <div className="mt-10 bg-blue-50 border border-blue-200 rounded-xl p-5">
+          <h3 className="font-bold text-lg mb-2 text-blue-900">
+            রেটিং ও রিভিউ
+          </h3>
+          <div className="flex items-center gap-2 mb-4">
+            <span className="text-blue-700 font-semibold">আপনার রেটিং:</span>
+            {[1, 2, 3, 4, 5].map((star) => (
+              <button
+                key={star}
+                onClick={() => handleRating(star)}
+                className={`text-2xl ${
+                  userRating >= star ? "text-yellow-400" : "text-gray-300"
+                }`}
+                aria-label={`রেট ${star} তারকা`}
+              >
+                ★
+              </button>
+            ))}
+          </div>
+          <form onSubmit={handleReviewSubmit} className="flex gap-2 mb-4">
+            <input
+              type="text"
+              value={reviewInput}
+              onChange={(e) => setReviewInput(e.target.value)}
+              placeholder="আপনার মন্তব্য লিখুন..."
+              className="flex-1 rounded-lg border border-blue-200 px-3 py-2 bg-white/80 focus:ring-2 focus:ring-blue-400 focus:outline-none"
+              disabled={reviewLoading}
+            />
+            <button
+              type="submit"
+              className="bg-gradient-to-r from-blue-500 to-green-400 text-white font-bold px-4 py-2 rounded-lg shadow hover:from-green-400 hover:to-blue-500 transition-all"
+              disabled={reviewLoading}
+            >
+              মন্তব্য দিন
+            </button>
+          </form>
+          <div className="mt-4">
+            <h4 className="font-semibold text-blue-800 mb-2">
+              সাম্প্রতিক রিভিউ
+            </h4>
+            {reviews.length === 0 ? (
+              <div className="text-blue-400">এখনো কোনো রিভিউ নেই।</div>
+            ) : (
+              <ul className="space-y-3">
+                {reviews.map((r) => (
+                  <li
+                    key={r.id}
+                    className="bg-white rounded-lg p-3 border border-blue-100"
+                  >
+                    <div className="font-bold text-blue-700">{r.userName}</div>
+                    <div className="text-blue-900">{r.comment}</div>
+                    <div className="text-xs text-blue-400 mt-1">
+                      {new Date(r.createdAt).toLocaleString()}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
+      )} */}
     </section>
   );
 };
