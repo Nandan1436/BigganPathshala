@@ -26,7 +26,7 @@ export default function LoginPage() {
         className="w-full max-w-md bg-white/90 rounded-2xl shadow-2xl p-8 flex flex-col gap-6 border border-blue-100"
       >
         <h2 className="text-3xl font-extrabold text-center bg-gradient-to-r from-blue-500 to-green-400 bg-clip-text text-transparent mb-4">
-          Science Hub Login
+          BigganPathshala Login
         </h2>
         <input
           type="email"
