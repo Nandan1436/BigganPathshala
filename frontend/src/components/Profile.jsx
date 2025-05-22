@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { getAuth, onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, updateDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { useNavigate } from "react-router-dom";
 import { X } from "lucide-react";
@@ -23,7 +23,7 @@ const Profile = () => {
     contributionTitle: "New Contributor",
     learning: 0,
     learningTitle: "Learning Novice",
-    blogsCount: 0,
+    blogsCount: 0, // Still in state, but fetched from blogs collection
     tutorialsCount: 0,
     commentsCount: 0,
     bio: "",
@@ -93,27 +93,40 @@ const Profile = () => {
 
     const fetchProfile = async () => {
       try {
+        // Fetch user profile data
         const userDoc = await getDoc(doc(db, "users", user.uid));
+        let userData = {};
         if (userDoc.exists()) {
-          const data = userDoc.data();
-          setProfile({
-            username: data.username || "অজ্ঞাত ব্যবহারকারী",
-            profilePic: data.profilePic || "👤",
-            reputation: data.reputation || 0,
-            reputationTitle: data.reputationTitle || "Newbie",
-            contribution: data.contribution || 0,
-            contributionTitle: data.contributionTitle || "New Contributor",
-            learning: data.learning || 0,
-            learningTitle: data.learningTitle || "Learning Novice",
-            blogsCount: data.blogsCount || 0,
-            tutorialsCount: data.tutorialsCount || 0,
-            commentsCount: data.commentsCount || 0,
-            bio: data.bio || "এখনো কোনো বায়ো সেট করা হয়নি।",
-            interests: data.interests || []
-          });
-          setTempBio(data.bio || "");
-          setTempInterests(data.interests || []);
+          userData = userDoc.data();
         }
+
+        // Fetch blogs count from blogs collection
+        const blogsQuery = query(
+          collection(db, "blog"),
+          where("uid", "==", user.uid)
+        );
+        const blogsSnapshot = await getDocs(blogsQuery);
+        const blogsCount = blogsSnapshot.size; // Count of matching documents
+      
+
+        // Set profile state
+        setProfile({
+          username: userData.username || "অজ্ঞাত ব্যবহারকারী",
+          profilePic: userData.profilePic || "👤",
+          reputation: userData.reputation || 0,
+          reputationTitle: userData.reputationTitle || "Newbie",
+          contribution: userData.contribution || 0,
+          contributionTitle: userData.contributionTitle || "New Contributor",
+          learning: userData.learning || 0,
+          learningTitle: userData.learningTitle || "Learning Novice",
+          blogsCount: blogsCount, // Set from blogs collection
+          tutorialsCount: userData.tutorialsCount || 0,
+          commentsCount: userData.commentsCount || 0,
+          bio: userData.bio || "এখনো কোনো বায়ো সেট করা হয়নি।",
+          interests: userData.interests || []
+        });
+        setTempBio(userData.bio || "");
+        setTempInterests(userData.interests || []);
       } catch (err) {
         console.error("Error fetching profile:", err);
       }
@@ -410,7 +423,7 @@ const Profile = () => {
             bgClass: "bg-blue-500"
           }}
           description="Reputation"
-          earnMethod="Reputation shows comment impact. Get upvotes on comments."
+          earnMethod="রিপুটেশন দেখায় আপনার মন্তব্য কতটা প্রভাব ফেলেছে। মন্তব্যে আপভোট পেয়ে এটি বাড়ান।"
         />
         <CustomProgressBar
           value={contributionProgress.percentage}
@@ -425,7 +438,7 @@ const Profile = () => {
             bgClass: "bg-green-500"
           }}
           description="Contribution"
-          earnMethod="Contribution reflects blog impact. Get upvotes on blog posts."
+          earnMethod="কন্ট্রিবিউশন নির্ধারণ করে আপনার ব্লগ কতটা কার্যকর ছিল। ব্লগ পোস্টে আপভোট পেয়ে স্কোর বাড়ান।"
         />
         <CustomProgressBar
           value={learningProgress.percentage}
@@ -440,7 +453,7 @@ const Profile = () => {
             bgClass: "bg-purple-500"
           }}
           description="Learning"
-          earnMethod="Learning tracks tutorial progress. Complete tutorial quizzes."
+          earnMethod="লার্নিং দেখায় আপনি কতটুকু শিখেছেন। টিউটোরিয়াল কুইজ শেষ করে অগ্রগতি অর্জন করুন।"
         />
       </div>
 
