@@ -77,13 +77,15 @@ const Ask = () => {
         let fetchedQuestions = await Promise.all(
           snapshot.docs.map(async (docSnapshot) => {
             const data = docSnapshot.data();
+            let username = "অজ্ঞাত ব্যবহারকারী";
             let profilePic = "👤";
             let reputationTitle = "Newbie";
             try {
               const userDoc = await getDoc(doc(db, "users", data.uid));
               if (userDoc.exists()) {
                 const userData = userDoc.data();
-                profilePic = userData.profilePic || "👤";
+                username = userData.username || "অজ্ঞাত ব্যবহারকারী";
+                profilePic = userData.profilePic || "৿";
                 reputationTitle = userData.reputationTitle || "Newbie";
               }
             } catch (err) {
@@ -91,7 +93,7 @@ const Ask = () => {
             }
             return {
               id: docSnapshot.id,
-              user: data.user || "অজ্ঞাত ব্যবহারকারী",
+              user: username,
               uid: data.uid,
               profilePic,
               reputationTitle,
@@ -135,13 +137,15 @@ const Ask = () => {
             let comments = await Promise.all(
               commentSnapshot.docs.map(async (commentDoc) => {
                 const commentData = commentDoc.data();
-                let profilePic = "👤";
+                let username = "অজ্ঞাত ব্যবহারকারী";
+                let profilePic = "৿";
                 let reputationTitle = "Newbie";
                 try {
                   const userDoc = await getDoc(doc(db, "users", commentData.uid));
                   if (userDoc.exists()) {
                     const userData = userDoc.data();
-                    profilePic = userData.profilePic || "👤";
+                    username = userData.username || "অজ্ঞাত ব্যবহারকারী";
+                    profilePic = userData.profilePic || "৿";
                     reputationTitle = userData.reputationTitle || "Newbie";
                   }
                 } catch (err) {
@@ -149,7 +153,7 @@ const Ask = () => {
                 }
                 return {
                   id: commentDoc.id,
-                  user: commentData.user || "অজ্ঞাত ব্যবহারকারী",
+                  user: username,
                   uid: commentData.uid,
                   profilePic,
                   reputationTitle,
@@ -232,10 +236,14 @@ const Ask = () => {
       return;
     }
 
+    const question = questions.find((q) => q.id === questionId);
+    if (question.uid === user.uid) {
+      return; // Prevent self-voting
+    }
+
     try {
       const questionRef = doc(db, "questions", questionId);
       const voteRef = doc(db, "questions", questionId, "votes", user.uid);
-      const question = questions.find((q) => q.id === questionId);
       let upvotes = question.upvotes;
       let downvotes = question.downvotes;
       let userVote = question.userVote;
@@ -246,15 +254,31 @@ const Ask = () => {
         upvotes = voteType === "up" ? upvotes - 1 : upvotes;
         downvotes = voteType === "down" ? downvotes - 1 : downvotes;
         userVote = null;
+        if (voteType === "up") {
+          await updateUserReputation(db, question.uid, -1); // Undo upvote
+        } else {
+          await updateUserReputation(db, question.uid, 1); // Undo downvote
+        }
       } else {
         // Remove existing vote (if any)
-        if (userVote === "up") upvotes -= 1;
-        if (userVote === "down") downvotes -= 1;
+        if (userVote === "up") {
+          upvotes -= 1;
+          await updateUserReputation(db, question.uid, -1);
+        }
+        if (userVote === "down") {
+          downvotes -= 1;
+          await updateUserReputation(db, question.uid, 1);
+        }
         // Add new vote
         await setDoc(voteRef, { voteType });
         upvotes = voteType === "up" ? upvotes + 1 : upvotes;
         downvotes = voteType === "down" ? downvotes + 1 : downvotes;
         userVote = voteType;
+        if (voteType === "up") {
+          await updateUserReputation(db, question.uid, 1);
+        } else {
+          await updateUserReputation(db, question.uid, -1);
+        }
       }
 
       // Update question document
@@ -290,11 +314,15 @@ const Ask = () => {
       return;
     }
 
+    const question = questions.find((q) => q.id === questionId);
+    const comment = question.commentList.find((c) => c.id === commentId);
+    if (comment.uid === user.uid) {
+      return; // Prevent self-voting
+    }
+
     try {
       const commentRef = doc(db, "questions", questionId, "comments", commentId);
       const voteRef = doc(db, "questions", questionId, "comments", commentId, "votes", user.uid);
-      const question = questions.find((q) => q.id === questionId);
-      const comment = question.commentList.find((c) => c.id === commentId);
       let upvotes = comment.upvotes;
       let downvotes = comment.downvotes;
       let userVote = comment.userVote;
@@ -304,25 +332,32 @@ const Ask = () => {
         await setDoc(voteRef, { voteType: null });
         upvotes = voteType === "up" ? upvotes - 1 : upvotes;
         downvotes = voteType === "down" ? downvotes - 1 : downvotes;
-        if (voteType === "up") {
-          await updateUserReputation(db, comment.uid, -1); // Decrease reputation
-        }
         userVote = null;
+        if (voteType === "up") {
+          await updateUserReputation(db, comment.uid, -1); // Undo upvote
+        } else {
+          await updateUserReputation(db, comment.uid, 1); // Undo downvote
+        }
       } else {
         // Remove existing vote (if any)
         if (userVote === "up") {
           upvotes -= 1;
-          await updateUserReputation(db, comment.uid, -1); // Decrease reputation
+          await updateUserReputation(db, comment.uid, -1);
         }
-        if (userVote === "down") downvotes -= 1;
+        if (userVote === "down") {
+          downvotes -= 1;
+          await updateUserReputation(db, comment.uid, 1);
+        }
         // Add new vote
         await setDoc(voteRef, { voteType });
         upvotes = voteType === "up" ? upvotes + 1 : upvotes;
         downvotes = voteType === "down" ? downvotes + 1 : downvotes;
-        if (voteType === "up") {
-          await updateUserReputation(db, comment.uid, 1); // Increase reputation
-        }
         userVote = voteType;
+        if (voteType === "up") {
+          await updateUserReputation(db, comment.uid, 1);
+        } else {
+          await updateUserReputation(db, comment.uid, -1);
+        }
       }
 
       // Update comment document
@@ -359,9 +394,9 @@ const Ask = () => {
       const userData = userDoc.exists() ? userDoc.data() : {};
 
       await addDoc(collection(db, "questions", questionId.toString(), "comments"), {
-        user: user.displayName || "অজ্ঞাত ব্যবহারকারী",
+        user: userData.username || "অজ্ঞাত ব্যবহারকারী",
         uid: user.uid,
-        profilePic: userData.profilePic || "👤",
+        profilePic: userData.profilePic || "৿",
         content: newComment,
         upvotes: 0,
         downvotes: 0,
@@ -392,9 +427,9 @@ const Ask = () => {
       const userData = userDoc.exists() ? userDoc.data() : {};
 
       await addDoc(collection(db, "questions"), {
-        user: user.displayName || "অজ্ঞাত ব্যবহারকারী",
+        user: userData.username || "অজ্ঞাত ব্যবহারকারী",
         uid: user.uid,
-        profilePic: userData.profilePic || "👤",
+        profilePic: userData.profilePic || "৿",
         question,
         category,
         tags: selectedTags,
@@ -609,14 +644,14 @@ const Ask = () => {
               >
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
-                    {q.profilePic && q.profilePic !== "👤" ? (
+                    {q.profilePic && q.profilePic !== "৿" ? (
                       <img
                         src={q.profilePic}
                         alt="User profile"
                         className="w-8 h-8 rounded-full object-cover border-2 border-blue-300"
                       />
                     ) : (
-                      <span className="text-xl">👤</span>
+                      <span className="text-xl">৿</span>
                     )}
                     <div className="flex flex-col">
                       <span className="font-medium text-blue-800">{q.user}</span>
@@ -642,36 +677,51 @@ const Ask = () => {
                 </div>
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleQuestionVote(q.id, "up")}
-                        className={`flex items-center justify-center p-1 rounded-full transition-all ${
-                          q.userVote === "up"
-                            ? "bg-green-100 text-green-700"
-                            : "text-gray-500 hover:text-green-600 hover:bg-green-50"
-                        }`}
-                        aria-label="Upvote"
-                        type="button"
-                      >
-                        <ThumbsUp size={16} className={q.userVote === "up" ? "fill-green-700" : ""} />
-                      </button>
-                      <span className="text-sm font-medium">{q.upvotes}</span>
-                    </div>
-                    <div className="flex items-center gap-1">
-                      <button
-                        onClick={() => handleQuestionVote(q.id, "down")}
-                        className={`flex items-center justify-center p-1 rounded-full transition-all ${
-                          q.userVote === "down"
-                            ? "bg-red-100 text-red-700"
-                            : "text-gray-500 hover:text-red-600 hover:bg-red-50"
-                        }`}
-                        aria-label="Downvote"
-                        type="button"
-                      >
-                        <ThumbsDown size={16} className={q.userVote === "down" ? "fill-red-700" : ""} />
-                      </button>
-                      <span className="text-sm font-medium">{q.downvotes}</span>
-                    </div>
+                    {user && user.uid !== q.uid ? (
+                      <>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleQuestionVote(q.id, "up")}
+                            className={`flex items-center justify-center p-1 rounded-full transition-all ${
+                              q.userVote === "up"
+                                ? "bg-green-100 text-green-700"
+                                : "text-gray-500 hover:text-green-600 hover:bg-green-50"
+                            }`}
+                            aria-label="Upvote"
+                            type="button"
+                          >
+                            <ThumbsUp size={16} className={q.userVote === "up" ? "fill-green-700" : ""} />
+                          </button>
+                          <span className="text-sm font-medium">{q.upvotes}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            onClick={() => handleQuestionVote(q.id, "down")}
+                            className={`flex items-center justify-center p-1 rounded-full transition-all ${
+                              q.userVote === "down"
+                                ? "bg-red-100 text-red-700"
+                                : "text-gray-500 hover:text-red-600 hover:bg-red-50"
+                            }`}
+                            aria-label="Downvote"
+                            type="button"
+                          >
+                            <ThumbsDown size={16} className={q.userVote === "down" ? "fill-red-700" : ""} />
+                          </button>
+                          <span className="text-sm font-medium">{q.downvotes}</span>
+                        </div>
+                      </>
+                    ) : (
+                      <>
+                        <div className="flex items-center gap-1">
+                          <ThumbsUp size={16} className="text-gray-400" />
+                          <span className="text-sm font-medium">{q.upvotes}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <ThumbsDown size={16} className="text-gray-400" />
+                          <span className="text-sm font-medium">{q.downvotes}</span>
+                        </div>
+                      </>
+                    )}
                     <button
                       onClick={() => toggleComments(q.id)}
                       className="flex items-center gap-1 text-blue-700 hover:text-blue-500 p-1 rounded-full hover:bg-blue-50 transition-all"
@@ -712,14 +762,14 @@ const Ask = () => {
                           <div key={comment.id} className="bg-blue-50 rounded-lg p-3">
                             <div className="flex items-center justify-between mb-1">
                               <div className="flex items-center gap-2">
-                                {comment.profilePic && comment.profilePic !== "👤" ? (
+                                {comment.profilePic && comment.profilePic !== "৿" ? (
                                   <img
                                     src={comment.profilePic}
                                     alt="User profile"
                                     className="w-6 h-6 rounded-full object-cover border-2 border-blue-300"
                                   />
                                 ) : (
-                                  <span className="text-lg">👤</span>
+                                  <span className="text-lg">৿</span>
                                 )}
                                 <div className="flex flex-col">
                                   <span className="font-medium">{comment.user}</span>
@@ -730,42 +780,57 @@ const Ask = () => {
                             </div>
                             <p className="text-blue-900 mb-2">{comment.content}</p>
                             <div className="flex items-center gap-4">
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => handleCommentVote(q.id, comment.id, "up")}
-                                  className={`flex items-center justify-center p-1 rounded-full transition-all ${
-                                    comment.userVote === "up"
-                                      ? "bg-green-100 text-green-700"
-                                      : "text-gray-500 hover:text-green-600 hover:bg-green-50"
-                                  }`}
-                                  aria-label="Upvote comment"
-                                  type="button"
-                                >
-                                  <ThumbsUp
-                                    size={14}
-                                    className={comment.userVote === "up" ? "fill-green-700" : ""}
-                                  />
-                                </button>
-                                <span className="text-xs font-medium">{comment.upvotes}</span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  onClick={() => handleCommentVote(q.id, comment.id, "down")}
-                                  className={`flex items-center justify-center p-1 rounded-full transition-all ${
-                                    comment.userVote === "down"
-                                      ? "bg-red-100 text-red-700"
-                                      : "text-gray-500 hover:text-red-600 hover:bg-red-50"
-                                  }`}
-                                  aria-label="Downvote comment"
-                                  type="button"
-                                >
-                                  <ThumbsDown
-                                    size={14}
-                                    className={comment.userVote === "down" ? "fill-red-700" : ""}
-                                  />
-                                </button>
-                                <span className="text-xs font-medium">{comment.downvotes}</span>
-                              </div>
+                              {user && user.uid !== comment.uid ? (
+                                <>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => handleCommentVote(q.id, comment.id, "up")}
+                                      className={`flex items-center justify-center p-1 rounded-full transition-all ${
+                                        comment.userVote === "up"
+                                          ? "bg-green-100 text-green-700"
+                                          : "text-gray-500 hover:text-green-600 hover:bg-green-50"
+                                      }`}
+                                      aria-label="Upvote comment"
+                                      type="button"
+                                    >
+                                      <ThumbsUp
+                                        size={14}
+                                        className={comment.userVote === "up" ? "fill-green-700" : ""}
+                                      />
+                                    </button>
+                                    <span className="text-xs font-medium">{comment.upvotes}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => handleCommentVote(q.id, comment.id, "down")}
+                                      className={`flex items-center justify-center p-1 rounded-full transition-all ${
+                                        comment.userVote === "down"
+                                          ? "bg-red-100 text-red-700"
+                                          : "text-gray-500 hover:text-red-600 hover:bg-red-50"
+                                      }`}
+                                      aria-label="Downvote comment"
+                                      type="button"
+                                    >
+                                      <ThumbsDown
+                                        size={14}
+                                        className={comment.userVote === "down" ? "fill-red-700" : ""}
+                                      />
+                                    </button>
+                                    <span className="text-xs font-medium">{comment.downvotes}</span>
+                                  </div>
+                                </>
+                              ) : (
+                                <>
+                                  <div className="flex items-center gap-1">
+                                    <ThumbsUp size={14} className="text-gray-400" />
+                                    <span className="text-xs font-medium">{comment.upvotes}</span>
+                                  </div>
+                                  <div className="flex items-center gap-1">
+                                    <ThumbsDown size={14} className="text-gray-400" />
+                                    <span className="text-xs font-medium">{comment.downvotes}</span>
+                                  </div>
+                                </>
+                              )}
                             </div>
                           </div>
                         ))}
