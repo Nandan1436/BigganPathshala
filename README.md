@@ -134,6 +134,11 @@ Many students in Bangladesh and beyond struggle to connect with science due to a
 
 ---
 
+> **Personal Contributions:**  
+> I worked primarily on the **User Profile** and **Q&A components** to enhance user interactivity and profile management features.
+
+---
+
 ## 🚀 Getting Started
 
 ```bash
