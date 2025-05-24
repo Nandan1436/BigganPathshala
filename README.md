@@ -1,13 +1,11 @@
-# Biggan Pathshala
-
----
-# Team CodeSynthesis
+# Team DU_CodeSynthesis
 
 ## Team Members
 
 - **Mohammad Ismail Hossain**
 - **Nandan Bhowmick**
 - **Md. Mahfuz Ibne Ali Ayon**
+
 
 [GitHub Repository](https://github.com/CodeWithIsmail/BigganPathshala)
 
@@ -28,6 +26,7 @@
 - [License](#license)
 
 ---
+
 
 ## ✨ Project Overview
 
@@ -109,6 +108,13 @@ Many students in Bangladesh and beyond struggle to connect with science due to a
 - **AI Integration:** Gemini API (Auto-answer, Summarization)
 - **Deployment:** Vercel
 
+## 🛠️ Tech Stack
+
+| Frontend                              | Backend                    | AI         | Deployment |
+| ------------------------------------- | -------------------------- | ---------- | ---------- |
+| React.js (Vite, Tiptap, Tailwind CSS) | Firebase (Auth, Firestore) | Gemini API | Vercel     |
+
+---
 
 ## 🧩 Development Strategy
 
@@ -135,6 +141,13 @@ npm run dev
 ```
 
 ---
+
+## 📸 Screenshots
+
+See [`screenshots.md`](screenshots.md) for visuals of the platform.
+
+---
+
 
 ## 🛣️ Future Roadmap
 
