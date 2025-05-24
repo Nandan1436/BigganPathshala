@@ -14,6 +14,7 @@
 ## Table of Contents
 
 - [Project Overview](#project-overview)
+- [Live Demo](#live-demo)
 - [Problem & Solution](#problem--solution)
 - [Key Features](#key-features)
 - [System Architecture](#system-architecture)
@@ -31,6 +32,13 @@
 ## ✨ Project Overview
 
 **Biggan Pathshala** is a modern, interactive, and fully localized science tutorial, blog, and quiz platform. Students can learn science in simple language, ask questions, and create or share their own content. The platform blends the interactivity of social media with the depth of a knowledge-sharing hub.
+
+---
+
+## 🔗 Live Demo
+
+Check out the original hosted version of **Biggan Pathshala** here:  
+[https://bigganpathshala.vercel.app/](https://bigganpathshala.vercel.app/)
 
 ---
 
